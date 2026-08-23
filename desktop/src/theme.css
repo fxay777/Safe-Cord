@@ -1,0 +1,104 @@
+:root {
+  --bg-void: #0A0D11;
+  --bg-base: #10151B;
+  --bg-surface: #1A2029;
+  --bg-elevated: #212834;
+  --bg-hover: #2A3341;
+
+  /* Identidade do SafeCord: teal "verificado" como cor de ação primária,
+     violeta como par de gradiente — deliberadamente longe do azul-arroxeado
+     genérico de clone de chat. */
+  --accent: #22C4E8;
+  --accent-dim: #1AA3C2;
+  --accent-glow: rgba(34, 196, 232, 0.32);
+  --accent-secondary: #7FE8FF;
+  --accent-secondary-dim: #22C4E8;
+  --accent-gradient: linear-gradient(135deg, #22C4E8, #7FE8FF);
+  --accent-ambient: rgba(34, 196, 232, 0.07);
+  --accent-secondary-ambient: rgba(127, 232, 255, 0.06);
+  --accent-contrast: #06222B;
+
+  --warn: #F0B429;
+  --danger: #F0654F;
+  --success: #34D399;
+
+  --text-hi: #F3F5F8;
+  --text-mid: #B8C0CC;
+  --text-low: #7E8999;
+
+  --border: #262E3B;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 28px 70px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 26px var(--accent-glow);
+
+  --font-display: 'Segoe UI Semibold', 'Inter', sans-serif;
+  --font-body: 'Segoe UI', 'Inter', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /* Textura sutil no fundo — evita o "chapado" de painel liso que denuncia mockup.
+     Usa a cor do tema ativo, então trocar de tema muda o clima do app inteiro,
+     não só os botões. */
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -10%, var(--accent-ambient), transparent 60%),
+    radial-gradient(ellipse 800px 600px at 100% 110%, var(--accent-secondary-ambient), transparent 55%),
+    var(--bg-void);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  transition: background 0.4s ease;
+}
+
+button, input {
+  font-family: inherit;
+}
+
+button {
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+::selection {
+  background: var(--accent);
+  color: #06222b;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* -------- Selo de assinatura: "conexão segura" -------- */
+.shield-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  100% { box-shadow: 0 0 0 6px rgba(45, 212, 191, 0); }
+}
+.status-dot.online { background: var(--success); animation: pulse-ring 2s infinite; }

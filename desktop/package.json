@@ -1,0 +1,26 @@
+{
+  "name": "safecord-desktop",
+  "version": "1.0.0",
+  "description": "SafeCord Desktop - cliente Electron",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev:vite": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "electron": "^31.3.1",
+    "vite": "^5.4.1",
+    "wait-on": "^7.2.0"
+  }
+}

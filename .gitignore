@@ -1,0 +1,48 @@
+# === Dependências ===
+node_modules/
+**/node_modules/
+
+# === Variáveis de ambiente / segredos ===
+.env
+.env.local
+.env.*.local
+**/.env
+
+# === Banco de dados local (SQLite) ===
+server/safecord.db
+server/safecord.db-shm
+server/safecord.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# === Uploads de usuário (avatar/banner gerados em runtime) ===
+server/uploads/*
+!server/uploads/.gitkeep
+!server/uploads/avatars/.gitkeep
+!server/uploads/banners/.gitkeep
+
+# === Builds ===
+desktop/dist/
+desktop/build/
+desktop/release/
+mobile/dist/
+mobile/.expo/
+mobile/web-build/
+build/
+dist/
+
+# === Logs ===
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# === Editor / SO ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# === Ferramentas de terceiros (não faz parte do projeto) ===
+.qodo/

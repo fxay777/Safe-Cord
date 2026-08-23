@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "SafeCord",
+    "slug": "safecord",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B0F14",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "O SafeCord precisa do microfone para chamadas de voz."
+      }
+    },
+    "android": {
+      "permissions": ["RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"],
+      "package": "com.safecord.app"
+    },
+    "plugins": ["@config-plugins/react-native-webrtc"]
+  }
+}
