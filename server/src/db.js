@@ -15,7 +15,9 @@ const ensureUserColumns = () => {
     ['banner_url', 'TEXT'],
     ['bio', 'TEXT NOT NULL DEFAULT ""'],
     ['spotify_track_id', 'TEXT'],
+    ['spotify_track', "TEXT"], // JSON: {id, name, artists, album, image, preview_url, external_url} — cache local pra não rebuscar no Spotify toda hora
     ['connections', "TEXT NOT NULL DEFAULT '[]'"],
+    ['status_mode', "TEXT NOT NULL DEFAULT 'online'"], // 'online' | 'idle' | 'dnd' | 'invisible' — escolhido pelo usuário
   ];
 
   for (const [name, definition] of migrations) {

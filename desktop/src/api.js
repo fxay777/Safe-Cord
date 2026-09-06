@@ -65,6 +65,12 @@ export async function updateServer(api, serverId, patch) {
   return data.server;
 }
 
+// Muda o status de presença (online/ausente/não incomodar/invisível).
+export async function updateStatus(api, statusMode) {
+  const { data } = await api.put('/auth/me/status', { status_mode: statusMode });
+  return data.user;
+}
+
 // Gera um novo código de convite (invalida o antigo).
 export async function regenerateInviteCode(api, serverId) {
   const { data } = await api.post(`/servers/${serverId}/invite/regenerate`);

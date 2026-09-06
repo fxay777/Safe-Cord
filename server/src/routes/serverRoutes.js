@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth } = require('../auth');
 const { requireServerPermission } = require('../permissions');
+const { effectiveStatus } = require('../statusUtils');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -149,7 +150,7 @@ router.post('/:serverId/invite/regenerate', requireServerPermission('gerenciar_s
 router.get('/:serverId/members', (req, res) => {
   const members = db
     .prepare(
-      `SELECT u.id, u.username, u.tag, u.avatar_color, u.display_name, u.avatar_url, u.banner_url, u.bio, u.status
+      `SELECT u.id, u.username, u.tag, u.avatar_color, u.display_name, u.avatar_url, u.banner_url, u.bio, u.status, u.status_mode
        FROM server_members m JOIN users u ON u.id = m.user_id
        WHERE m.server_id = ?`
     )
@@ -173,6 +174,7 @@ router.get('/:serverId/members', (req, res) => {
 
   const withRoles = members.map((m) => ({
     ...m,
+    status: effectiveStatus(m.status_mode, m.status === 'online'),
     is_owner: server?.owner_id === m.id,
     roles: rolesByUser.get(m.id) || [],
   }));

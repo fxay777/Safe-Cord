@@ -240,7 +240,7 @@ function ProfileTab({ user, onOpenProfile }) {
         {user?.bio && <div style={styles.profilePreviewBio}>{user.bio}</div>}
 
         <div style={styles.profileQuickRow}>
-          {user?.spotify_track_id && (
+          {user?.spotify_track && (
             <span style={styles.profileQuickChip}><MusicIcon size={12} /> Música fixada</span>
           )}
           {connections.length > 0 && (
@@ -578,7 +578,7 @@ const styles = {
   },
   slider: { width: '100%', accentColor: 'var(--accent)' },
   testRow: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 },
-  meterTrack: { flex: 1, height: 8, borderRadius: 6, background: 'var(--bg-elevated)', overflow: 'hidden', border: '1px solid var(--border)' },
+  meterTrack: { flex: 1, height: 8, borderRadius: 9, background: 'var(--bg-elevated)', overflow: 'hidden', border: '1px solid var(--border)' },
   meterFill: { height: '100%', background: 'var(--accent)', transition: 'width 0.08s linear' },
   smallBtn: {
     background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-hi)', borderRadius: 'var(--radius-sm)',
@@ -615,7 +615,7 @@ const styles = {
   },
   newBadge: {
     position: 'absolute', top: -6, left: -6, background: '#F0568C', color: '#fff', fontSize: 8,
-    fontWeight: 900, letterSpacing: 0.3, padding: '2px 5px', borderRadius: 5, boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+    fontWeight: 900, letterSpacing: 0.3, padding: '2px 5px', borderRadius: 8, boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
   },
   tileCheck: {
     position: 'absolute', top: 4, right: 4, width: 16, height: 16, borderRadius: '50%',
@@ -624,7 +624,7 @@ const styles = {
   customGradRow: { display: 'flex', alignItems: 'center', gap: 14 },
   customColorField: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
   customColorLabel: { fontSize: 10.5, color: 'var(--text-low)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 },
-  customGradPreview: { flex: 1, height: 34, borderRadius: 9, background: 'var(--accent-gradient)', border: '1px solid var(--border)' },
+  customGradPreview: { flex: 1, height: 34, borderRadius: 13, background: 'var(--accent-gradient)', border: '1px solid var(--border)' },
   resetLink: {
     background: 'transparent', border: 'none', color: 'var(--text-low)', fontSize: 11.5, fontWeight: 600,
     cursor: 'pointer', textDecoration: 'underline', padding: '2px 0', marginBottom: 18,
@@ -639,7 +639,7 @@ const styles = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0,
   },
   previewMsgAuthor: { fontSize: 13, fontWeight: 700, color: 'var(--text-hi)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 },
-  previewBadge: { fontSize: 9, fontWeight: 800, background: 'var(--accent)', color: 'var(--accent-contrast)', borderRadius: 4, padding: '1px 5px' },
+  previewBadge: { fontSize: 9, fontWeight: 800, background: 'var(--accent)', color: 'var(--accent-contrast)', borderRadius: 6, padding: '1px 5px' },
   previewMsgText: { fontSize: 12.5, color: 'var(--text-mid)' },
   previewBtn: { background: 'var(--accent)', color: 'var(--accent-contrast)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '8px 14px', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', flexShrink: 0 },
   profilePreviewHero: { height: 96, borderRadius: 'var(--radius-md)', position: 'relative', marginBottom: 40 },
@@ -681,7 +681,7 @@ const styles = {
   accountTag: { fontSize: 11, color: 'var(--text-low)' },
   activeBadge: {
     fontSize: 10.5, fontWeight: 800, color: 'var(--accent)', background: 'rgba(255,255,255,0.06)',
-    borderRadius: 6, padding: '4px 8px', flexShrink: 0,
+    borderRadius: 9, padding: '4px 8px', flexShrink: 0,
   },
   accountSwitchBtn: {
     background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-hi)', borderRadius: 'var(--radius-sm)',

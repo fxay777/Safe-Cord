@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { resolveAssetUrl } from '../api';
+import { statusMeta } from './UserProfilePopup';
+import { EmptyFriendsArt } from './EmptyStateArt';
 
 export default function FriendsPanel({ api, socket, currentUserId, onOpenDM }) {
   const [friends, setFriends] = useState([]);
@@ -170,7 +172,12 @@ export default function FriendsPanel({ api, socket, currentUserId, onOpenDM }) {
       )}
 
       <Section title={`Todos os amigos — ${friends.length}`}>
-        {friends.length === 0 && <div style={styles.hintText}>Você ainda não tem amigos adicionados.</div>}
+        {friends.length === 0 && (
+          <div style={styles.emptyState}>
+            <EmptyFriendsArt />
+            <div style={styles.hintText}>Você ainda não tem amigos adicionados.</div>
+          </div>
+        )}
         {friends.map((u) => (
           <div key={u.friendship_id} style={styles.row}>
             <PersonBadge user={u} showStatus />
@@ -208,7 +215,7 @@ function PersonBadge({ user, showStatus }) {
           <div style={{ ...styles.avatar, background: user.avatar_color || 'var(--accent)' }}>{initials || '?'}</div>
         )}
         {showStatus && (
-          <div style={{ ...styles.dot, background: user.status === 'online' ? 'var(--success)' : 'var(--text-low)' }} />
+          <div style={{ ...styles.dot, background: statusMeta(user.status).color }} />
         )}
       </div>
       <div style={styles.personMeta}>
@@ -246,6 +253,7 @@ const styles = {
   resultsBox: { marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' },
   resultRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '6px 4px' },
   hintText: { fontSize: 12.5, color: 'var(--text-low)', padding: '4px 2px' },
+  emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '24px 0' },
   section: { marginBottom: 22 },
   sectionLabel: { fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-low)', marginBottom: 10, borderBottom: '1px solid var(--border)', paddingBottom: 8 },
   row: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 4px', borderBottom: '1px solid rgba(255,255,255,0.03)' },
@@ -258,6 +266,6 @@ const styles = {
   personMeta: { minWidth: 0 },
   personName: { fontSize: 13.5, fontWeight: 700, color: 'var(--text-hi)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   personTag: { fontSize: 11, color: 'var(--text-low)' },
-  smallPrimaryBtn: { border: 'none', background: 'linear-gradient(135deg, var(--accent), var(--accent-secondary))', color: '#fff', fontWeight: 700, fontSize: 12, padding: '7px 12px', borderRadius: 8, cursor: 'pointer' },
-  smallGhostBtn: { border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)', color: 'var(--text-mid)', fontSize: 12, padding: '7px 12px', borderRadius: 8, cursor: 'pointer' },
+  smallPrimaryBtn: { border: 'none', background: 'linear-gradient(135deg, var(--accent), var(--accent-secondary))', color: '#fff', fontWeight: 700, fontSize: 12, padding: '7px 12px', borderRadius: 12, cursor: 'pointer' },
+  smallGhostBtn: { border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)', color: 'var(--text-mid)', fontSize: 12, padding: '7px 12px', borderRadius: 12, cursor: 'pointer' },
 };

@@ -273,7 +273,7 @@ const styles = {
   },
   configBtn: {
     border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 8,
+    borderRadius: 12,
     background: 'rgba(255,255,255,0.02)',
     color: 'var(--text-mid)',
     padding: '5px 10px',
@@ -310,7 +310,7 @@ const styles = {
   iconBtn: {
     width: 26,
     height: 26,
-    borderRadius: 8,
+    borderRadius: 12,
     border: '1px solid rgba(255,255,255,0.08)',
     background: 'rgba(0,0,0,0.2)',
     color: 'var(--text-mid)',
@@ -374,7 +374,7 @@ const styles = {
     width: '100%',
     background: 'rgba(255,255,255,0.02)',
     border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 8,
+    borderRadius: 12,
     color: 'var(--text-hi)',
     fontSize: 12,
     padding: '9px 12px',
@@ -382,7 +382,7 @@ const styles = {
   editorActions: { display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' },
   secondaryBtn: {
     border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 8,
+    borderRadius: 12,
     background: 'transparent',
     color: 'var(--text-mid)',
     padding: '7px 12px',
@@ -392,7 +392,7 @@ const styles = {
   },
   deleteBtn: {
     border: '1px solid rgba(248,113,113,0.15)',
-    borderRadius: 8,
+    borderRadius: 12,
     background: 'rgba(248,113,113,0.04)',
     color: '#FCA5A5',
     padding: '7px 12px',
@@ -403,7 +403,7 @@ const styles = {
   button: {
     minWidth: 72,
     height: 34,
-    borderRadius: 8,
+    borderRadius: 12,
     border: '1px solid rgba(255,255,255,0.08)',
     background: 'rgba(255,255,255,0.06)',
     color: 'var(--text-hi)',

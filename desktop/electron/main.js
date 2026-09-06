@@ -1,6 +1,11 @@
 const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
 
+// Sem isso, o Chromium pode bloquear o autoplay do áudio dos outros participantes da
+// call (o <audio> criado via JS pra tocar a voz recebida) sem mostrar nenhum erro — você
+// entrava na call, via todo mundo, mas não ouvia ninguém. Precisa vir antes do app ficar pronto.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 const isDev = !app.isPackaged;
 
 function createWindow() {

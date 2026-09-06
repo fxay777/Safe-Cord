@@ -2,11 +2,17 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth } = require('../auth');
+const { effectiveStatus } = require('../statusUtils');
 
 const router = express.Router();
 router.use(requireAuth);
 
-const PUBLIC_USER_FIELDS = 'id, username, tag, avatar_color, display_name, avatar_url, banner_url, bio, status';
+const PUBLIC_USER_FIELDS = 'id, username, tag, avatar_color, display_name, avatar_url, banner_url, bio, status, status_mode';
+
+function withEffectiveStatus(row) {
+  if (!row) return row;
+  return { ...row, status: effectiveStatus(row.status_mode, row.status === 'online') };
+}
 
 // user_a/user_b sempre em ordem lexicográfica — assim "eu→você" e "você→eu" caem
 // na mesma conversa em vez de criar duas linhas diferentes.
@@ -37,7 +43,7 @@ router.get('/', (req, res) => {
 
   const conversations = rows.map((c) => {
     const otherId = c.user_a === req.user.id ? c.user_b : c.user_a;
-    const other = db.prepare(`SELECT ${PUBLIC_USER_FIELDS} FROM users WHERE id = ?`).get(otherId);
+    const other = withEffectiveStatus(db.prepare(`SELECT ${PUBLIC_USER_FIELDS} FROM users WHERE id = ?`).get(otherId));
     const lastMessage = db
       .prepare('SELECT content, author_id, created_at FROM dm_messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1')
       .get(c.id);
@@ -54,7 +60,7 @@ router.post('/:friendId', (req, res) => {
   const friendId = req.params.friendId;
   if (friendId === req.user.id) return res.status(400).json({ error: 'Você não pode conversar consigo mesmo' });
 
-  const friend = db.prepare(`SELECT ${PUBLIC_USER_FIELDS} FROM users WHERE id = ?`).get(friendId);
+  const friend = withEffectiveStatus(db.prepare(`SELECT ${PUBLIC_USER_FIELDS} FROM users WHERE id = ?`).get(friendId));
   if (!friend) return res.status(404).json({ error: 'Usuário não encontrado' });
   if (!areFriends(req.user.id, friendId)) return res.status(403).json({ error: 'Vocês precisam ser amigos pra conversar' });
 

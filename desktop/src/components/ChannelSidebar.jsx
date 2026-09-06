@@ -68,6 +68,8 @@ export default function ChannelSidebar({
   onToggleDeafen,
   onOpenSettings,
   onOpenProfile,
+  onChangeStatus,
+  onOpenAccounts,
   voicePresence = {},
   voiceConnected = false,
   voiceChannelName,
@@ -298,6 +300,8 @@ export default function ChannelSidebar({
         onToggleDeafen={onToggleDeafen}
         onOpenSettings={onOpenSettings}
         onOpenProfile={openProfile}
+        onChangeStatus={onChangeStatus}
+        onOpenAccounts={onOpenAccounts}
       />
 
       {serverSettingsOpen && (
@@ -562,8 +566,8 @@ const styles = {
   },
   headerActions: { display: 'flex', alignItems: 'center', gap: 8 },
   headerName: { fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 15, color: 'var(--text-hi)' },
-  inviteCode: { fontSize: 10.5, color: 'var(--text-low)', fontFamily: 'monospace', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px' },
-  serverMenuBtn: { width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)', color: 'var(--text-mid)', cursor: 'pointer' },
+  inviteCode: { fontSize: 10.5, color: 'var(--text-low)', fontFamily: 'monospace', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 9, padding: '3px 6px' },
+  serverMenuBtn: { width: 28, height: 28, borderRadius: 12, border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)', color: 'var(--text-mid)', cursor: 'pointer' },
   section: { padding: '14px 10px 4px' },
   featureStack: {
     padding: '0 10px 10px',
@@ -603,7 +607,7 @@ const styles = {
     fontWeight: 800,
     minWidth: 17,
     height: 17,
-    borderRadius: 9,
+    borderRadius: 13,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -622,7 +626,7 @@ const styles = {
   voiceMemberAvatarImg: { width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 },
   voiceMemberName: { fontSize: 12, color: 'var(--text-low)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   channelDeleteBtn: {
-    flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: 'transparent',
+    flexShrink: 0, width: 22, height: 22, borderRadius: 9, border: 'none', background: 'transparent',
     color: 'var(--text-low)', fontSize: 10.5, cursor: 'pointer', opacity: 0.7,
   },
   categoryBlock: { marginTop: 10 },
@@ -642,20 +646,20 @@ const styles = {
     margin: '4px 0 8px', display: 'flex', flexDirection: 'column', gap: 8,
   },
   newChannelInput: {
-    width: '100%', background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border)', borderRadius: 8,
+    width: '100%', background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border)', borderRadius: 12,
     color: 'var(--text-hi)', fontSize: 12.5, padding: '7px 9px',
   },
   newChannelTypeRow: { display: 'flex', gap: 6 },
   typeToggle: (active) => ({
-    flex: 1, fontSize: 11.5, padding: '6px 8px', borderRadius: 7, cursor: 'pointer',
+    flex: 1, fontSize: 11.5, padding: '6px 8px', borderRadius: 10, cursor: 'pointer',
     border: active ? '1px solid rgba(22,199,179,0.4)' : '1px solid var(--border)',
     background: active ? 'rgba(22,199,179,0.15)' : 'transparent',
     color: active ? 'var(--text-hi)' : 'var(--text-mid)',
   }),
   newChannelError: { fontSize: 11, color: 'var(--danger)' },
   newChannelActions: { display: 'flex', justifyContent: 'flex-end', gap: 8 },
-  newChannelCancel: { border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-mid)', fontSize: 11.5, padding: '6px 10px', borderRadius: 7, cursor: 'pointer' },
-  newChannelConfirm: { border: 'none', background: 'linear-gradient(135deg, var(--accent), var(--accent-secondary))', color: '#fff', fontWeight: 700, fontSize: 11.5, padding: '6px 12px', borderRadius: 7, cursor: 'pointer' },
+  newChannelCancel: { border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-mid)', fontSize: 11.5, padding: '6px 10px', borderRadius: 10, cursor: 'pointer' },
+  newChannelConfirm: { border: 'none', background: 'linear-gradient(135deg, var(--accent), var(--accent-secondary))', color: '#fff', fontWeight: 700, fontSize: 11.5, padding: '6px 12px', borderRadius: 10, cursor: 'pointer' },
   generalBox: { display: 'flex', flexDirection: 'column', gap: 10 },
   dangerZone: { marginTop: 4 },
   dangerLabel: { display: 'block', fontSize: 11, fontWeight: 800, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 },
@@ -691,7 +695,7 @@ const styles = {
     color: 'var(--accent-contrast)', fontWeight: 900, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   svrColorSwatchActive: { border: '2px solid #fff', boxShadow: '0 0 0 1px rgba(255,255,255,0.3)' },
-  svrColorPicker: { width: 30, height: 28, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', padding: 2, cursor: 'pointer' },
+  svrColorPicker: { width: 30, height: 28, border: '1px solid var(--border)', borderRadius: 9, background: 'transparent', padding: 2, cursor: 'pointer' },
   saveRow: { display: 'flex', alignItems: 'center', gap: 12, marginTop: 2 },
   errorTextInline: { fontSize: 11.5, color: 'var(--danger)' },
   divider: { height: 1, background: 'var(--border)', margin: '6px 0' },
@@ -739,8 +743,8 @@ const styles = {
   closeBtn: { border: 'none', background: 'transparent', color: 'var(--text-mid)', fontSize: 26, cursor: 'pointer', lineHeight: 1 },
   settingsBody: { display: 'flex', gap: 16, minHeight: 360 },
   settingsSidebar: { width: 180, display: 'flex', flexDirection: 'column', gap: 8 },
-  settingsTab: { textAlign: 'left', background: 'transparent', border: '1px solid transparent', borderRadius: 8, color: 'var(--text-mid)', padding: '8px 10px', cursor: 'pointer' },
-  settingsTabActive: { textAlign: 'left', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, color: 'var(--text-hi)', padding: '8px 10px', cursor: 'pointer', fontWeight: 700 },
+  settingsTab: { textAlign: 'left', background: 'transparent', border: '1px solid transparent', borderRadius: 12, color: 'var(--text-mid)', padding: '8px 10px', cursor: 'pointer' },
+  settingsTabActive: { textAlign: 'left', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, color: 'var(--text-hi)', padding: '8px 10px', cursor: 'pointer', fontWeight: 700 },
   settingsContent: { flex: 1, display: 'flex', flexDirection: 'column', gap: 12 },
   primaryBtn: { border: 'none', background: 'linear-gradient(135deg, var(--accent), var(--accent-secondary))', color: '#fff', fontWeight: 700, padding: '9px 14px', borderRadius: 10, cursor: 'pointer', boxShadow: '0 12px 28px rgba(22,199,179,0.35)' },
 };

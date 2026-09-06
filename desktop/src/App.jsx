@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { createApiClient, createSocket, uploadProfileImage, removeProfileImage, uploadServerImage, removeServerImage, updateServer, regenerateInviteCode } from './api';
+import { createApiClient, createSocket, uploadProfileImage, removeProfileImage, uploadServerImage, removeServerImage, updateServer, regenerateInviteCode, updateStatus } from './api';
 import { useVoiceChannel } from './useVoiceChannel';
 import { useSettings } from './useSettings';
 import { useAccounts } from './useAccounts';
@@ -58,6 +58,19 @@ export default function App() {
   function openProfileEdit() {
     setSettingsOpen(false);
     setProfileEditOpen(true);
+  }
+
+  function openAccountsPicker() {
+    openSettings('conta');
+  }
+
+  async function handleChangeStatus(statusMode) {
+    try {
+      const updatedUser = await updateStatus(api, statusMode);
+      updateActiveUser(updatedUser);
+    } catch (err) {
+      console.error('Erro ao mudar status:', err);
+    }
   }
 
   // Preferências de mic/headset exibidas na barra de usuário: refletem a chamada
@@ -124,7 +137,7 @@ export default function App() {
         display_name: profile.display_name ?? user?.display_name,
         bio: profile.bio ?? user?.bio,
         avatar_color: profile.avatar_color ?? user?.avatar_color,
-        spotify_track: profile.spotify_track !== undefined ? profile.spotify_track : (user?.spotify_track_id ?? ''),
+        spotify_track: profile.spotify_track !== undefined ? profile.spotify_track : (user?.spotify_track ?? null),
         connections: profile.connections ?? user?.connections ?? [],
       };
 
@@ -508,6 +521,8 @@ export default function App() {
           onToggleDeafen={handleToggleDeafen}
           onOpenSettings={() => openSettings('voz')}
           onOpenProfile={openProfileEdit}
+          onChangeStatus={handleChangeStatus}
+          onOpenAccounts={openAccountsPicker}
           voiceConnected={voice.connected}
           voiceChannelName={voiceChannelName}
           voiceParticipants={voice.participants}
@@ -550,6 +565,8 @@ export default function App() {
               onToggleDeafen={handleToggleDeafen}
               onOpenSettings={() => openSettings('voz')}
               onOpenProfile={openProfileEdit}
+              onChangeStatus={handleChangeStatus}
+              onOpenAccounts={openAccountsPicker}
               voicePresence={voicePresence}
               voiceConnected={voice.connected}
               voiceChannelName={voiceChannelName}
@@ -634,6 +651,7 @@ export default function App() {
       <ProfileEditModal
         open={profileEditOpen}
         user={user}
+        api={api}
         onClose={() => setProfileEditOpen(false)}
         onSaveProfile={saveProfile}
         onUploadProfileImage={handleUploadProfileImage}

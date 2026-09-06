@@ -127,13 +127,13 @@ const styles = {
   itemBody: { flex: 1, minWidth: 0, cursor: 'default' },
   groupName: { fontSize: 13, fontWeight: 700, color: 'var(--text-hi)' },
   renameInput: {
-    flex: 1, background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6,
+    flex: 1, background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 9,
     color: 'var(--text-hi)', fontSize: 13, padding: '4px 8px',
   },
-  iconBtn: { width: 26, height: 26, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', color: 'var(--text-mid)', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  iconBtnDanger: { width: 26, height: 26, borderRadius: 8, border: '1px solid rgba(248,113,113,0.15)', background: 'rgba(248,113,113,0.04)', color: '#FCA5A5', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  iconBtn: { width: 26, height: 26, borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', color: 'var(--text-mid)', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  iconBtnDanger: { width: 26, height: 26, borderRadius: 12, border: '1px solid rgba(248,113,113,0.15)', background: 'rgba(248,113,113,0.04)', color: '#FCA5A5', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   form: { display: 'flex', gap: 8, marginTop: 12 },
   hintText: { fontSize: 11.5, color: 'var(--text-low)', marginTop: 10 },
-  input: { width: '100%', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, color: 'var(--text-hi)', fontSize: 12, padding: '9px 12px' },
-  button: { minWidth: 44, height: 34, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-hi)', fontWeight: 700, cursor: 'pointer', fontSize: 14 },
+  input: { width: '100%', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, color: 'var(--text-hi)', fontSize: 12, padding: '9px 12px' },
+  button: { minWidth: 44, height: 34, borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-hi)', fontWeight: 700, cursor: 'pointer', fontSize: 14 },
 };

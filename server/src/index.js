@@ -13,6 +13,7 @@ const uploadRoutes = require('./routes/uploadRoutes');
 const roleRoutes = require('./routes/roleRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const dmRoutes = require('./routes/dmRoutes');
+const spotifyRoutes = require('./routes/spotifyRoutes');
 const { attachRealtime } = require('./realtime');
 
 const app = express();
@@ -37,11 +38,13 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/servers/:serverId/roles', roleRoutes);
 app.use('/api/servers/:serverId/categories', categoryRoutes);
 app.use('/api/dms', dmRoutes);
+app.use('/api/spotify', spotifyRoutes);
 
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, { cors: { origin: '*' } });
 const notifyUser = attachRealtime(io);
 app.set('notifyUser', notifyUser);
+app.set('io', io);
 
 const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => {

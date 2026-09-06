@@ -71,6 +71,12 @@ export function useVoiceChannel(socket) {
         audioElsRef.current.set(peerSocketId, audioEl);
       }
       audioEl.srcObject = event.streams[0];
+      // Reforço: mesmo com autoplay=true, alguns navegadores só tocam de fato depois
+      // de um .play() explícito — sem isso, o áudio remoto ficava "mudo" sem erro nenhum.
+      const playPromise = audioEl.play();
+      if (playPromise?.catch) {
+        playPromise.catch(() => setError('O navegador bloqueou o áudio da chamada — clique em qualquer lugar da tela e tente de novo.'));
+      }
     };
 
     peersRef.current.set(peerSocketId, pc);

@@ -146,7 +146,7 @@ const styles = {
     fontSize: 11.5,
     fontWeight: 700,
     padding: '6px 10px',
-    borderRadius: 8,
+    borderRadius: 12,
     cursor: 'pointer',
   },
   card: {

@@ -106,7 +106,7 @@ const styles = {
   avatarImg: { width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 },
   rowMeta: { flex: 1, minWidth: 0 },
   rowName: { fontSize: 13, fontWeight: 700, color: 'var(--text-hi)', display: 'flex', alignItems: 'center', gap: 6 },
-  ownerTag: { fontSize: 9, fontWeight: 800, color: '#F0B429', border: '1px solid rgba(240,180,41,0.3)', borderRadius: 4, padding: '1px 5px', letterSpacing: 0.4 },
+  ownerTag: { fontSize: 9, fontWeight: 800, color: '#F0B429', border: '1px solid rgba(240,180,41,0.3)', borderRadius: 6, padding: '1px 5px', letterSpacing: 0.4 },
   rolePills: { display: 'flex', gap: 4, marginTop: 3, flexWrap: 'wrap' },
   noRole: { fontSize: 10.5, color: 'var(--text-low)' },
   pill: { fontSize: 10, fontWeight: 700, color: '#fff', borderRadius: 999, padding: '2px 8px' },

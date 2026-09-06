@@ -1,27 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { resolveAssetUrl } from '../api';
+import UserProfilePopup, { statusMeta } from './UserProfilePopup';
 
 // Barra de usuário fixa (estilo Discord): avatar + nome, mudo de microfone,
 // ensurdecer e acesso rápido às configurações de voz/aparência.
-export default function UserBar({ user, micMuted, deafened, inCall, onToggleMic, onToggleDeafen, onOpenSettings, onOpenProfile }) {
+export default function UserBar({
+  user, micMuted, deafened, inCall, onToggleMic, onToggleDeafen, onOpenSettings,
+  onOpenProfile, onChangeStatus, onOpenAccounts,
+}) {
+  const [popupOpen, setPopupOpen] = useState(false);
   const name = user?.display_name || user?.username || 'Usuário';
   const initials = (name || '?').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
   const avatarUrl = resolveAssetUrl(user?.avatar_url);
+  const currentStatus = statusMeta(user?.status_mode);
 
   return (
     <div style={styles.wrap}>
-      <button type="button" style={styles.identity} onClick={onOpenProfile} title="Editar perfil">
+      <button type="button" style={styles.identity} onClick={() => setPopupOpen((v) => !v)} title="Seu perfil">
         <div style={styles.avatarWrap}>
           {avatarUrl ? (
             <img src={avatarUrl} alt={name} style={styles.avatarImg} />
           ) : (
             <div style={{ ...styles.avatar, background: user?.avatar_color || 'var(--accent)' }}>{initials || '?'}</div>
           )}
-          <div style={{ ...styles.statusDot, background: inCall ? 'var(--success)' : 'var(--text-low)' }} />
+          <div style={{ ...styles.statusDot, background: currentStatus.color }} />
         </div>
         <div style={styles.meta}>
           <div style={styles.name}>{name}</div>
-          <div style={styles.tag}>{inCall ? 'Em chamada de voz' : `#${user?.tag || '0000'}`}</div>
+          <div style={styles.tag}>{inCall ? 'Em chamada de voz' : currentStatus.label}</div>
         </div>
       </button>
 
@@ -46,6 +52,15 @@ export default function UserBar({ user, micMuted, deafened, inCall, onToggleMic,
           <GearIcon />
         </button>
       </div>
+
+      <UserProfilePopup
+        open={popupOpen}
+        user={user}
+        onClose={() => setPopupOpen(false)}
+        onChangeStatus={onChangeStatus}
+        onOpenProfileEdit={onOpenProfile}
+        onOpenAccounts={onOpenAccounts}
+      />
     </div>
   );
 }
@@ -95,6 +110,7 @@ const styles = {
     background: 'var(--bg-void)',
     borderTop: '1px solid var(--border)',
     flexShrink: 0,
+    position: 'relative',
   },
   identity: {
     display: 'flex',

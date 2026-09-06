@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { resolveAssetUrl } from '../api';
 import { SearchIcon, BellIcon, SmileyIcon, ArrowUpIcon } from './Icons';
+import { EmptyChannelArt, EmptyMessagesArt } from './EmptyStateArt';
 
 export default function ChatView({
   channel,
@@ -22,7 +23,7 @@ export default function ChatView({
   if (!channel) {
     return (
       <div style={styles.empty}>
-        <div style={styles.emptyIcon}>#</div>
+        <EmptyChannelArt />
         <h2 style={styles.emptyTitle}>Nenhum canal selecionado</h2>
         <p style={styles.emptyText}>
           Selecione um canal ao lado para começar a conversar.
@@ -102,9 +103,7 @@ export default function ChatView({
       <main style={styles.messages}>
         {messages.length === 0 ? (
           <div style={styles.welcome}>
-            <div style={styles.welcomeIcon}>
-              {isDM ? '@' : '#'}
-            </div>
+            <EmptyMessagesArt />
 
             <h2 style={styles.welcomeTitle}>
               {isDM ? `Início da conversa com ${channel.name}` : `Bem-vindo ao #${channel.name}!`}
@@ -371,21 +370,6 @@ const styles = {
       'radial-gradient(circle at center, rgba(45,212,191,0.05), transparent 45%)',
   },
 
-  emptyIcon: {
-    width: 70,
-    height: 70,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-    background: 'var(--bg-elevated)',
-    border: '1px solid var(--border)',
-    color: 'var(--accent)',
-    fontSize: 36,
-    fontWeight: 800,
-    marginBottom: 18,
-  },
-
   emptyTitle: {
     margin: 0,
     color: 'var(--text-hi)',
@@ -447,7 +431,7 @@ const styles = {
     width: 34,
     height: 34,
     border: 'none',
-    borderRadius: 8,
+    borderRadius: 12,
     background: 'transparent',
     color: 'var(--text-mid)',
     cursor: 'pointer',
@@ -475,21 +459,6 @@ const styles = {
     marginBottom: 12,
   },
 
-  welcomeIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'var(--bg-elevated)',
-    border: '1px solid var(--border)',
-    color: 'var(--accent)',
-    fontSize: 30,
-    fontWeight: 800,
-    marginBottom: 15,
-  },
-
   welcomeTitle: {
     margin: 0,
     fontSize: 21,
@@ -513,7 +482,7 @@ const styles = {
     padding: grouped
       ? '1px 6px'
       : '3px 6px',
-    borderRadius: 7,
+    borderRadius: 10,
     transition: 'background 0.12s ease',
   }),
 
@@ -654,7 +623,7 @@ const styles = {
     height: 36,
     flexShrink: 0,
     border: 'none',
-    borderRadius: 9,
+    borderRadius: 13,
     background: 'transparent',
     color: 'var(--text-mid)',
     cursor: 'pointer',
@@ -686,7 +655,7 @@ const styles = {
     height: 36,
     flexShrink: 0,
     border: 'none',
-    borderRadius: 9,
+    borderRadius: 13,
     background: 'rgba(255,255,255,0.04)',
     color: 'var(--text-low)',
     fontWeight: 700,

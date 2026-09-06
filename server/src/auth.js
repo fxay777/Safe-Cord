@@ -13,6 +13,7 @@ function signToken(user) {
       banner_url: user.banner_url || null,
       bio: user.bio || '',
       display_name: user.display_name || '',
+      status_mode: user.status_mode || 'online',
     },
     JWT_SECRET,
     {

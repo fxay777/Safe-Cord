@@ -1,11 +1,13 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const { verifyToken } = require('./auth');
+const { effectiveStatus } = require('./statusUtils');
 
 // voiceRooms: Map<channelId, Set<socketId>>  — quem está em cada sala de voz
 const voiceRooms = new Map();
 const socketUser = new Map(); // socketId -> user info
 const userSockets = new Map(); // userId -> Set<socketId>  — pra mandar evento pra um usuário específico (ex: pedido de amizade)
+
 
 /**
  * Emite um evento pra todas as conexões abertas de um usuário (ele pode estar
@@ -30,7 +32,11 @@ function attachRealtime(io) {
     userSockets.get(socket.user.id).add(socket.id);
 
     db.prepare('UPDATE users SET status = ? WHERE id = ?').run('online', socket.user.id);
-    socket.broadcast.emit('presence:update', { userId: socket.user.id, status: 'online' });
+    // Respeita o status escolhido (ausente/não incomodar/invisível) mesmo ao reconectar —
+    // sem isso, a pessoa sempre voltava a aparecer "online" pros outros, ignorando a preferência.
+    const currentModeRow = db.prepare('SELECT status_mode FROM users WHERE id = ?').get(socket.user.id);
+    const currentMode = currentModeRow?.status_mode || 'online';
+    socket.broadcast.emit('presence:update', { userId: socket.user.id, status: effectiveStatus(currentMode, true) });
 
     // ---- Chat de texto ----
     socket.on('channel:join', (channelId) => {

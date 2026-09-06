@@ -582,7 +582,7 @@ const styles = {
 
   tab: {
     border: 'none',
-    borderRadius: 7,
+    borderRadius: 10,
     background: 'transparent',
     color: 'var(--text-mid)',
     padding: '9px 8px',
@@ -612,7 +612,7 @@ const styles = {
     background: 'rgba(240,101,79,0.08)',
     border: '1px solid rgba(240,101,79,0.16)',
     padding: '10px 12px',
-    borderRadius: 9,
+    borderRadius: 13,
   },
 
   errorIcon: {

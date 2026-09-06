@@ -2,11 +2,16 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth } = require('../auth');
+const { effectiveStatus } = require('../statusUtils');
 
 const router = express.Router();
 router.use(requireAuth);
 
-const PUBLIC_USER_FIELDS = 'id, username, tag, avatar_color, display_name, avatar_url, banner_url, bio, status';
+const PUBLIC_USER_FIELDS = 'id, username, tag, avatar_color, display_name, avatar_url, banner_url, bio, status, status_mode';
+
+function withEffectiveStatus(row) {
+  return { ...row, status: effectiveStatus(row.status_mode, row.status === 'online') };
+}
 
 // Busca usuários por nome (pra "adicionar pessoas"). Ignora quem já é o próprio usuário.
 router.get('/search', (req, res) => {
@@ -21,7 +26,7 @@ router.get('/search', (req, res) => {
     )
     .all(`%${q}%`, req.user.id);
 
-  res.json({ users: rows });
+  res.json({ users: rows.map(withEffectiveStatus) });
 });
 
 // Lista amigos aceitos + pedidos recebidos + pedidos enviados (tudo que a tela de Amigos precisa)
@@ -36,7 +41,8 @@ router.get('/', (req, res) => {
        WHERE (f.requester_id = ? OR f.addressee_id = ?) AND f.status = 'accepted'
        ORDER BY u.status = 'online' DESC, u.username ASC`
     )
-    .all(userId, userId, userId);
+    .all(userId, userId, userId)
+    .map(withEffectiveStatus);
 
   const incoming = db
     .prepare(
@@ -45,7 +51,8 @@ router.get('/', (req, res) => {
        WHERE f.addressee_id = ? AND f.status = 'pending'
        ORDER BY f.created_at DESC`
     )
-    .all(userId);
+    .all(userId)
+    .map(withEffectiveStatus);
 
   const outgoing = db
     .prepare(
@@ -54,7 +61,8 @@ router.get('/', (req, res) => {
        WHERE f.requester_id = ? AND f.status = 'pending'
        ORDER BY f.created_at DESC`
     )
-    .all(userId);
+    .all(userId)
+    .map(withEffectiveStatus);
 
   res.json({ friends, incoming, outgoing });
 });
