@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth } = require('../auth');
 const { effectiveStatus } = require('../statusUtils');
+const { findUserByHandle } = require('../userUtils');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -67,14 +68,21 @@ router.get('/', (req, res) => {
   res.json({ friends, incoming, outgoing });
 });
 
-// Envia um pedido de amizade por nome de usuário
+// Envia um pedido de amizade. Aceita "nome#1234" (jeito certo, igual ao Discord) ou
+// só "nome" quando houver uma única pessoa com aquele nome.
 router.post('/request', (req, res) => {
   const { username } = req.body || {};
   if (!username || !username.trim()) {
     return res.status(400).json({ error: 'Informe um nome de usuário' });
   }
 
-  const target = db.prepare('SELECT id FROM users WHERE username = ?').get(username.trim());
+  const found = findUserByHandle(username);
+  if (found?.ambiguous) {
+    return res.status(409).json({
+      error: `Existem ${found.count} pessoas com esse nome — use o formato nome#0000`,
+    });
+  }
+  const target = found;
   if (!target) return res.status(404).json({ error: 'Usuário não encontrado' });
   if (target.id === req.user.id) return res.status(400).json({ error: 'Você não pode adicionar a si mesmo' });
 

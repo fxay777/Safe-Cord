@@ -20,6 +20,7 @@ function shadeHex(hex, percent) {
 // Temas em degradê — cada um vira o gradiente de botões, banners e realces do app inteiro
 // (igual aos "Temas coloridos" do Discord Nitro, só que com paleta própria do SafeCord).
 export const ACCENT_PRESETS = [
+  { id: 'safecord', label: 'SafeCord', accent: '#3A9BFF', accentSecondary: '#C9E5FF' },
   { id: 'skyblue', label: 'Azul Claro', accent: '#22C4E8', accentSecondary: '#7FE8FF' },
   { id: 'aurora', label: 'Aurora', accent: '#16C7B3', accentSecondary: '#8C7BFA' },
   { id: 'sunset', label: 'Pôr do Sol', accent: '#F0654F', accentSecondary: '#F0B429' },
@@ -56,7 +57,9 @@ function withDerived(theme) {
 }
 
 const DEFAULT_SETTINGS = {
-  themePresetId: 'skyblue',
+  themePresetId: 'safecord',
+  themeVersion: 3,
+  mode: 'light', // 'light' | 'dark' | 'system'
   customAccent: null, // { accent, accentSecondary } | null — sobrepõe o preset quando definido
   audio: {
     inputDeviceId: '',
@@ -84,6 +87,16 @@ function loadSettings() {
     // Blindagem contra dados de versões antigas: um themePresetId que não existe mais
     // na lista atual, ou um customAccent incompleto/corrompido, travava a aba de Aparência
     // num estado que nunca batia com nenhum tile — parecia que clicar não fazia nada.
+    // Visual novo (v2): quem ainda estava no tema padrão antigo passa pro azul da logo nova.
+    if ((parsed.themeVersion || 1) < 2) {
+      if (!parsed.themePresetId || parsed.themePresetId === 'skyblue') merged.themePresetId = 'safecord';
+    }
+    // v3: visual azul claro + branco — quem vem de versões antigas começa no tema claro
+    if ((parsed.themeVersion || 1) < 3) {
+      merged.mode = 'light';
+      merged.themeVersion = 3;
+    }
+    if (!['light', 'dark', 'system'].includes(merged.mode)) merged.mode = 'light';
     if (!ACCENT_PRESETS.some((p) => p.id === merged.themePresetId)) {
       merged.themePresetId = DEFAULT_SETTINGS.themePresetId;
     }
@@ -127,6 +140,9 @@ export function themeToCssVars(theme) {
     '--accent-contrast': contrastFor(full.accent),
     // Tons bem suaves pra usar como brilho ambiente no fundo do app —
     // é o que faz o tema "se sentir" trocado, não só os botões.
+    // Fundo "tonal" das seleções (canal ativo, item ativo) — estilo Material/Stoat
+    '--accent-soft': `rgba(${r}, ${g}, ${b}, 0.16)`,
+    '--accent-softer': `rgba(${r}, ${g}, ${b}, 0.09)`,
     '--accent-ambient': `rgba(${r}, ${g}, ${b}, 0.07)`,
     '--accent-secondary-ambient': `rgba(${rgb2.r}, ${rgb2.g}, ${rgb2.b}, 0.06)`,
   };
@@ -158,6 +174,26 @@ export function useSettings() {
     applyThemeToDocument(activeTheme);
   }, [activeTheme]);
 
+  // Claro / escuro / seguir o sistema → atributo data-mode no <html>, que troca as
+  // superfícies e textos definidos em theme.css.
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const resolved = settings.mode === 'system' ? (media?.matches ? 'dark' : 'light') : settings.mode;
+      document.documentElement.setAttribute('data-mode', resolved);
+      document.documentElement.style.colorScheme = resolved;
+    };
+    apply();
+    if (settings.mode === 'system' && media) {
+      media.addEventListener('change', apply);
+      return () => media.removeEventListener('change', apply);
+    }
+  }, [settings.mode]);
+
+  const setMode = useCallback((mode) => {
+    setSettings((prev) => ({ ...prev, mode }));
+  }, []);
+
   const setPreset = useCallback((id) => {
     setSettings((prev) => ({ ...prev, themePresetId: id, customAccent: null }));
   }, []);
@@ -179,5 +215,6 @@ export function useSettings() {
     setPreset,
     setCustomGradient,
     setAudio,
+    setMode,
   };
 }

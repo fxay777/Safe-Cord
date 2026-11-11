@@ -44,8 +44,8 @@ router.post('/', (req, res) => {
 
   const tx = db.transaction(() => {
     db.prepare(
-      'INSERT INTO servers (id, name, owner_id, invite_code, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(serverId, name.trim(), req.user.id, inviteCode, now);
+      'INSERT INTO servers (id, name, owner_id, invite_code, created_at, color) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(serverId, name.trim(), req.user.id, inviteCode, now, '#1A75FF');
 
     db.prepare(
       'INSERT INTO server_members (server_id, user_id, joined_at) VALUES (?, ?, ?)'
@@ -148,6 +148,16 @@ router.post('/:serverId/invite/regenerate', requireServerPermission('gerenciar_s
 
 // Lista membros de um servidor (com status e cargos)
 router.get('/:serverId/members', (req, res) => {
+  // Só quem entrou no servidor (pelo convite) pode ver a lista — inclusive o banner e a
+  // bio de cada membro. Sem isso, qualquer pessoa logada via o perfil de gente de
+  // servidores em que nunca pôs os pés.
+  const isMember = db
+    .prepare('SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?')
+    .get(req.params.serverId, req.user.id);
+  if (!isMember) {
+    return res.status(403).json({ error: 'Você precisa ser membro deste servidor para ver isso' });
+  }
+
   const members = db
     .prepare(
       `SELECT u.id, u.username, u.tag, u.avatar_color, u.display_name, u.avatar_url, u.banner_url, u.bio, u.status, u.status_mode

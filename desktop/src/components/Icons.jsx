@@ -359,3 +359,168 @@ export function CompassIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+// ─── Ícones adicionados pra substituir os emojis restantes ───────────────
+
+const stroke = { stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+
+export function CloseIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M6 6l12 12M18 6 6 18" {...stroke} />
+    </svg>
+  );
+}
+
+export function ShopIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M5 8h14l-1.2 11.1A2 2 0 0 1 15.8 21H8.2a2 2 0 0 1-2-1.9L5 8Z" {...stroke} />
+      <path d="M9 10V7a3 3 0 0 1 6 0v3" {...stroke} />
+    </svg>
+  );
+}
+
+export function UsersIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <circle cx="9" cy="8" r="3.2" {...stroke} />
+      <path d="M3.5 19a5.5 5.5 0 0 1 11 0" {...stroke} />
+      <path d="M16 5.2a3 3 0 0 1 0 5.6M17.5 14a5 5 0 0 1 3 5" {...stroke} />
+    </svg>
+  );
+}
+
+export function PaperclipIcon({ size = 14, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="m20 11.5-7.6 7.6a5 5 0 0 1-7.1-7.1l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4l7.3-7.3" {...stroke} />
+    </svg>
+  );
+}
+
+export function LeaveIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" {...stroke} />
+      <path d="M10 8l-4 4 4 4M6 12h10" {...stroke} />
+    </svg>
+  );
+}
+
+export function AlertIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M12 3.5 2.8 19.5h18.4L12 3.5Z" {...stroke} />
+      <path d="M12 10v4M12 17h.01" {...stroke} />
+    </svg>
+  );
+}
+
+export function ScreenShareIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <rect x="3" y="4" width="18" height="12" rx="2" {...stroke} />
+      <path d="M9 20h6M12 16v4" {...stroke} />
+      <path d="M12 13V7.5M9.5 10 12 7.5 14.5 10" {...stroke} />
+    </svg>
+  );
+}
+
+export function StopShareIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <rect x="3" y="4" width="18" height="12" rx="2" {...stroke} />
+      <path d="M9 20h6M12 16v4" {...stroke} />
+      <path d="M9.5 7.5l5 5M14.5 7.5l-5 5" {...stroke} />
+    </svg>
+  );
+}
+
+export function ShieldCheckIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M12 3 5 6v5.5c0 4.3 3 7.9 7 9.5 4-1.6 7-5.2 7-9.5V6l-7-3Z" {...stroke} />
+      <path d="m9 12 2.2 2.2L15.5 10" {...stroke} />
+    </svg>
+  );
+}
+
+export function CrownIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M4 8l4 4 4-6 4 6 4-4-1.5 10h-13L4 8Z" {...stroke} />
+      <path d="M6 21h12" {...stroke} />
+    </svg>
+  );
+}
+
+export function DiamondIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M7 4h10l4 5-9 11L3 9l4-5Z" {...stroke} />
+      <path d="M3 9h18M10 4 8.5 9 12 20l3.5-11L14 4" {...stroke} />
+    </svg>
+  );
+}
+
+export function RocketIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M14 4c3 0 6 3 6 6l-6 6-6-6 6-6Z" {...stroke} />
+      <circle cx="15" cy="9" r="1.6" {...stroke} />
+      <path d="m8 10-3 1-1 3 4-1M14 16l-1 3-3 1 1-4M6 18l-2 2" {...stroke} />
+    </svg>
+  );
+}
+
+export function HeartIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10Z" {...stroke} />
+    </svg>
+  );
+}
+
+export function StarIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z" {...stroke} />
+    </svg>
+  );
+}
+
+export function WandIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <path d="M4 20 15 9M13 7l4 4" {...stroke} />
+      <path d="M18 3v3M16.5 4.5h3M20 9v2M19 10h2M10 3v2M9 4h2" {...stroke} />
+    </svg>
+  );
+}
+
+export function BadgeGenericIcon({ size = 16, ...props }) {
+  return (
+    <svg {...base(size)} {...props}>
+      <circle cx="12" cy="9" r="5" {...stroke} />
+      <path d="m9 13.5-1.5 7 4.5-2.5 4.5 2.5-1.5-7" {...stroke} />
+    </svg>
+  );
+}
+
+// As insígnias guardam no banco uma chave ("verified", "crown"…) e não o desenho;
+// este mapa decide o ícone. Chave desconhecida cai num ícone genérico.
+const BADGE_ICONS = {
+  verified: ShieldCheckIcon,
+  crown: CrownIcon,
+  diamond: DiamondIcon,
+  rocket: RocketIcon,
+  heart: HeartIcon,
+  star: StarIcon,
+  wand: WandIcon,
+};
+
+export function BadgeIcon({ name, size = 16, ...props }) {
+  const Icon = BADGE_ICONS[name] || BadgeGenericIcon;
+  return <Icon size={size} {...props} />;
+}

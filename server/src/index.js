@@ -14,11 +14,20 @@ const roleRoutes = require('./routes/roleRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const dmRoutes = require('./routes/dmRoutes');
 const spotifyRoutes = require('./routes/spotifyRoutes');
+const badgeRoutes = require('./routes/badgeRoutes');
+const shopRoutes = require('./routes/shopRoutes');
 const { attachRealtime } = require('./realtime');
+const { isSmtpConfigured } = require('./mailer');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+
+// O webhook do Stripe precisa do corpo CRU pra validar a assinatura. Em vez de montar a
+// loja inteira antes do parser (o que deixaria req.body vazio nas outras rotas dela),
+// guardamos uma cópia crua durante o parse e o webhook usa essa cópia.
+app.use(express.json({
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 
 // Arquivos de avatar/banner otimizados (webp) ficam aqui e são servidos como estáticos
 app.use(
@@ -39,6 +48,21 @@ app.use('/api/servers/:serverId/roles', roleRoutes);
 app.use('/api/servers/:serverId/categories', categoryRoutes);
 app.use('/api/dms', dmRoutes);
 app.use('/api/spotify', spotifyRoutes);
+app.use('/api/badges', badgeRoutes);
+app.use('/api/shop', shopRoutes);
+
+// Rede de segurança: sem isso, um erro em QUALQUER rota (ex: um INSERT que viola uma
+// constraint) derruba o processo inteiro e todo mundo cai junto. Aqui o pedido falha
+// sozinho, com uma resposta clara, e o servidor continua de pé.
+app.use((err, req, res, next) => {
+  console.error(`Erro em ${req.method} ${req.originalUrl}:`, err.message);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Algo deu errado no servidor' });
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Promise rejeitada sem tratamento:', reason);
+});
 
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, { cors: { origin: '*' } });
@@ -48,5 +72,7 @@ app.set('io', io);
 
 const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => {
-  console.log(`🛡️  SafeCord API rodando em http://localhost:${PORT}`);
+  console.log(`SafeCord API rodando em http://localhost:${PORT}`);
+  console.log(`   Email: ${isSmtpConfigured() ? 'SMTP configurado (ok)' : 'sem SMTP — códigos saem aqui no console'}`);
+  console.log(`   Pagamentos: ${process.env.STRIPE_SECRET_KEY ? 'Stripe configurado (ok)' : 'sem STRIPE_SECRET_KEY — loja em modo vitrine'}`);
 });

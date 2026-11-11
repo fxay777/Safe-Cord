@@ -76,3 +76,83 @@ export async function regenerateInviteCode(api, serverId) {
   const { data } = await api.post(`/servers/${serverId}/invite/regenerate`);
   return data.invite_code;
 }
+
+// --- Anexos de mensagem (imagem e vídeo) ---
+// Sobe o arquivo; o servidor otimiza e devolve {url, name, size, width, height, type}
+// pra mandar junto com a mensagem pelo socket.
+export async function uploadMessageAttachment(api, file) {
+  const form = new FormData();
+  form.append('file', file);
+  const { data } = await api.post('/uploads/message-attachment', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data.attachment;
+}
+
+// --- Verificação de email ---
+export async function verifyEmail(api, code) {
+  const { data } = await api.post('/auth/verify-email', { code });
+  return data;
+}
+
+export async function resendVerification(api) {
+  const { data } = await api.post('/auth/resend-verification');
+  return data;
+}
+
+export async function changeEmail(api, email) {
+  const { data } = await api.put('/auth/me/email', { email });
+  return data;
+}
+
+// --- Insígnias e loja ---
+export async function fetchBadges(api) {
+  const { data } = await api.get('/badges');
+  return data.badges;
+}
+
+export async function fetchShopProducts(api) {
+  const { data } = await api.get('/shop/products');
+  return data;
+}
+
+export async function startCheckout(api, productId) {
+  const { data } = await api.post('/shop/checkout', { productId });
+  return data;
+}
+
+export async function confirmPurchase(api, purchaseId) {
+  const { data } = await api.post(`/shop/purchases/${purchaseId}/confirm`);
+  return data;
+}
+
+// --- Conversas em grupo ---
+export async function createGroupConversation(api, memberIds, name) {
+  const { data } = await api.post('/dms/groups', { memberIds, name });
+  return data.conversation;
+}
+
+export async function renameGroupConversation(api, conversationId, name) {
+  const { data } = await api.put(`/dms/groups/${conversationId}`, { name });
+  return data.conversation;
+}
+
+export async function addGroupMember(api, conversationId, userId) {
+  const { data } = await api.post(`/dms/groups/${conversationId}/members`, { userId });
+  return data.conversation;
+}
+
+export async function leaveGroupConversation(api, conversationId) {
+  await api.delete(`/dms/groups/${conversationId}/members/me`);
+}
+
+/** Mostra o nome do jeito que o app exibe em todo lugar: "Apelido" ou "nome#0000". */
+export function formatHandle(user) {
+  if (!user) return '';
+  return `${user.username}#${user.tag}`;
+}
+
+export function displayNameOf(user) {
+  if (!user) return '';
+  return user.display_name || user.username || '';
+}

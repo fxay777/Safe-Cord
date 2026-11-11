@@ -86,4 +86,70 @@ function removeIfLocalUpload(urlPath) {
   }
 }
 
-module.exports = { upload, saveAvatar, saveBanner, saveServerIcon, saveServerBanner, removeIfLocalUpload, UPLOAD_ROOT };
+// --- Anexos de mensagem (imagem e vídeo) ---
+// Diferente de avatar/banner: aqui NÃO recortamos em quadrado — a proporção original é
+// preservada, só limitamos o lado maior. Vídeo não passa pelo sharp (ele só lida com
+// imagem), então é salvo como veio, com validação de tipo e tamanho.
+const ATTACHMENT_DIR = path.join(UPLOAD_ROOT, 'attachments');
+fs.mkdirSync(ATTACHMENT_DIR, { recursive: true });
+
+const ALLOWED_ATTACHMENT_MIME = new Set([
+  'image/png', 'image/jpeg', 'image/webp', 'image/gif',
+  'video/mp4', 'video/webm', 'video/quicktime',
+]);
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB — cobre imagem e vídeo curto
+const MAX_ATTACHMENT_DIMENSION = 1600;
+const VIDEO_EXT = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
+
+const uploadAttachment = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_ATTACHMENT_BYTES },
+  fileFilter(req, file, cb) {
+    if (!ALLOWED_ATTACHMENT_MIME.has(file.mimetype)) {
+      return cb(new Error('Formato não suportado (imagem PNG/JPEG/WEBP/GIF ou vídeo MP4/WEBM/MOV)'));
+    }
+    cb(null, true);
+  },
+});
+
+async function saveMessageAttachment(buffer, mimetype, userId, originalName) {
+  if (mimetype.startsWith('video/')) {
+    const ext = VIDEO_EXT[mimetype] || 'mp4';
+    const filename = `${userId}-${uuidv4()}.${ext}`;
+    fs.writeFileSync(path.join(ATTACHMENT_DIR, filename), buffer);
+    return {
+      url: `/uploads/attachments/${filename}`,
+      name: originalName || `video.${ext}`,
+      size: buffer.length,
+      type: mimetype,
+      width: null,
+      height: null,
+    };
+  }
+
+  const resized = sharp(buffer).rotate().resize({
+    width: MAX_ATTACHMENT_DIMENSION,
+    height: MAX_ATTACHMENT_DIMENSION,
+    fit: 'inside',           // preserva proporção, só reduz se passar do limite
+    withoutEnlargement: true,
+  });
+
+  const filename = `${userId}-${uuidv4()}.webp`;
+  const outputBuffer = await resized.webp({ quality: 85 }).toBuffer();
+  const meta = await sharp(outputBuffer).metadata();
+  fs.writeFileSync(path.join(ATTACHMENT_DIR, filename), outputBuffer);
+
+  return {
+    url: `/uploads/attachments/${filename}`,
+    width: meta.width,
+    height: meta.height,
+    size: outputBuffer.length,
+    name: originalName || 'imagem.webp',
+    type: 'image/webp',
+  };
+}
+
+module.exports = {
+  upload, saveAvatar, saveBanner, saveServerIcon, saveServerBanner, removeIfLocalUpload, UPLOAD_ROOT,
+  uploadAttachment, saveMessageAttachment,
+};

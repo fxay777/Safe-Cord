@@ -1,3 +1,4 @@
+import BadgeRow from './BadgeRow';
 import React, { useEffect, useRef, useState } from 'react';
 import { resolveAssetUrl } from '../api';
 import { EditIcon, UserIcon, MusicIcon, LinkIcon, CheckIcon } from './Icons';
@@ -65,7 +66,10 @@ export default function UserProfilePopup({ open, user, onClose, onChangeStatus, 
 
       <div style={styles.body}>
         <div style={styles.name}>{name}</div>
-        <div style={styles.tag}>{user?.username}#{user?.tag}</div>
+        <div style={styles.tagRow}>
+          <span style={styles.tag}>{user?.username}#{user?.tag}</span>
+          <BadgeRow badges={user?.badges} size={17} />
+        </div>
 
         {user?.bio && <div style={styles.bio}>{user.bio}</div>}
 
@@ -184,6 +188,7 @@ const styles = {
   },
   body: { padding: '34px 14px 14px' },
   name: { fontSize: 15, fontWeight: 800, color: 'var(--text-hi)' },
+  tagRow: { display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 2 },
   tag: { fontSize: 11.5, color: 'var(--text-low)', marginBottom: 8 },
   bio: { fontSize: 12, color: 'var(--text-mid)', lineHeight: 1.5, marginBottom: 8 },
   quickRow: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 },

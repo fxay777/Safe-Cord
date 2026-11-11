@@ -117,7 +117,7 @@ const styles = {
     height: 118,
     position: 'relative',
     overflow: 'hidden',
-    background: 'linear-gradient(135deg, rgba(45,212,191,0.28), rgba(129,140,248,0.18))',
+    background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 28%, transparent), rgba(129,140,248,0.18))',
   },
   bannerImage: {
     width: '100%',
@@ -141,7 +141,7 @@ const styles = {
   fileInput: { display: 'none' },
   ghostChip: {
     background: 'rgba(11,13,18,0.6)',
-    border: '1px solid rgba(255,255,255,0.16)',
+    border: '1px solid color-mix(in srgb, var(--text-hi) 16%, transparent)',
     color: '#fff',
     fontSize: 11.5,
     fontWeight: 700,

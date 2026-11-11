@@ -12,6 +12,7 @@ export default function SettingsModal({
   isCustom,
   setPreset,
   setCustomGradient,
+  setMode,
   setAudio,
   voice,
   accounts = [],
@@ -197,6 +198,8 @@ export default function SettingsModal({
               themePresetId={settings.themePresetId}
               setPreset={setPreset}
               setCustomGradient={setCustomGradient}
+              mode={settings.mode}
+              setMode={setMode}
             />
           )}
         </div>
@@ -437,7 +440,7 @@ function VoiceTab({
   );
 }
 
-function AppearanceTab({ presets, activeTheme, isCustom, themePresetId, setPreset, setCustomGradient }) {
+function AppearanceTab({ presets, activeTheme, isCustom, themePresetId, setPreset, setCustomGradient, mode, setMode }) {
   const [customOpen, setCustomOpen] = useState(false);
   const [fromDraft, setFromDraft] = useState(activeTheme.accent);
   const [toDraft, setToDraft] = useState(activeTheme.accentSecondary);
@@ -466,7 +469,36 @@ function AppearanceTab({ presets, activeTheme, isCustom, themePresetId, setPrese
 
   return (
     <div>
-      <h3 style={styles.sectionTitle}>Temas coloridos</h3>
+      <h3 style={styles.sectionTitle}>Modo</h3>
+      <div style={styles.modeGrid}>
+        {[
+          { id: 'light', label: 'Claro', void: '#DCEAFB', base: '#F1F7FE', surface: '#FFFFFF', line: '#D3E2F4' },
+          { id: 'dark', label: 'Escuro', void: '#08101C', base: '#0E1828', surface: '#122036', line: '#1F3049' },
+          { id: 'system', label: 'Igual ao sistema', split: true },
+        ].map((m) => {
+          const active = mode === m.id;
+          return (
+            <button key={m.id} type="button" style={{ ...styles.modeCard, ...(active ? styles.modeCardActive : {}) }} onClick={() => setMode?.(m.id)}>
+              <div style={styles.modePreview}>
+                {m.split ? (
+                  <>
+                    <ModeMini void="#DCEAFB" base="#F1F7FE" surface="#FFFFFF" line="#D3E2F4" clip="left" />
+                    <ModeMini void="#08101C" base="#0E1828" surface="#122036" line="#1F3049" clip="right" />
+                  </>
+                ) : (
+                  <ModeMini void={m.void} base={m.base} surface={m.surface} line={m.line} />
+                )}
+              </div>
+              <div style={styles.modeLabelRow}>
+                <span style={{ ...styles.modeRadio, ...(active ? styles.modeRadioOn : {}) }} />
+                {m.label}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <h3 style={{ ...styles.sectionTitle, marginTop: 26 }}>Temas coloridos</h3>
       <div style={styles.hint}>Deixe o SafeCord do seu jeito — a cor escolhida vira o degradê de botões, banners e realces em todo o app.</div>
 
       <div style={styles.swatchGrid}>
@@ -521,7 +553,7 @@ function AppearanceTab({ presets, activeTheme, isCustom, themePresetId, setPrese
       <button
         type="button"
         style={styles.resetLink}
-        onClick={() => { setPreset('skyblue'); setCustomOpen(false); }}
+        onClick={() => { setPreset('safecord'); setCustomOpen(false); }}
       >
         Restaurar tema padrão
       </button>
@@ -541,44 +573,77 @@ function AppearanceTab({ presets, activeTheme, isCustom, themePresetId, setPrese
   );
 }
 
+// Miniatura de uma janela do app (moldura + painéis) pro seletor de modo
+function ModeMini({ void: v, base, surface, line, clip }) {
+  const clipPath = clip === 'left' ? 'inset(0 50% 0 0)' : clip === 'right' ? 'inset(0 0 0 50%)' : undefined;
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: v, padding: 6, display: 'flex', gap: 4, clipPath }}>
+      <div style={{ width: 10, display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--accent)' }} />
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: base }} />
+      </div>
+      <div style={{ width: 34, background: base, borderRadius: 6, padding: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <span style={{ height: 5, borderRadius: 3, background: 'var(--accent)', opacity: 0.35 }} />
+        <span style={{ height: 5, borderRadius: 3, background: line }} />
+        <span style={{ height: 5, borderRadius: 3, background: line }} />
+      </div>
+      <div style={{ flex: 1, background: surface, borderRadius: 6, padding: 5, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 3 }}>
+        <span style={{ height: 5, width: '70%', borderRadius: 3, background: line }} />
+        <span style={{ height: 7, borderRadius: 4, background: line }} />
+      </div>
+    </div>
+  );
+}
+
 const styles = {
+  modeGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 4 },
+  modeCard: {
+    background: 'var(--bg-base)', border: '2px solid transparent', borderRadius: 18, padding: 8,
+    cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left',
+  },
+  modeCardActive: { borderColor: 'var(--accent)' },
+  modePreview: { position: 'relative', height: 74, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' },
+  modeLabelRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text-hi)', padding: '0 4px 2px' },
+  modeRadio: { width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--text-low)', flexShrink: 0 },
+  modeRadioOn: { border: '5px solid var(--accent)' },
+
   overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(6,10,14,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+    position: 'fixed', inset: 0, background: 'var(--scrim)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 80,
   },
   card: {
     width: 760, maxWidth: '92vw', height: 560, maxHeight: '88vh', background: 'var(--bg-surface)',
-    border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', display: 'flex', overflow: 'hidden',
+    border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', display: 'flex', overflow: 'hidden',
     boxShadow: 'var(--shadow-lg)',
   },
   sidebar: {
-    width: 200, flexShrink: 0, background: 'var(--bg-elevated)', borderRight: '1px solid var(--border)',
+    width: 210, flexShrink: 0, background: 'var(--bg-base)', borderRight: 'none',
     display: 'flex', flexDirection: 'column', padding: '16px 10px', gap: 4,
   },
-  sidebarTitle: { fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-low)', padding: '0 8px 8px' },
+  sidebarTitle: { fontSize: 12.5, fontWeight: 650, color: 'var(--text-low)', padding: '2px 14px 10px' },
   tab: {
     display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', background: 'transparent', border: 'none',
-    borderRadius: 'var(--radius-sm)', padding: '9px 10px', color: 'var(--text-mid)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    borderRadius: 'var(--radius-pill)', padding: '10px 14px', color: 'var(--text-mid)', fontSize: 14, fontWeight: 550, cursor: 'pointer',
   },
   tabActive: {
-    display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', background: 'var(--bg-hover)', border: 'none',
-    borderRadius: 'var(--radius-sm)', padding: '9px 10px', color: 'var(--text-hi)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', background: 'var(--accent-soft)', border: 'none',
+    borderRadius: 'var(--radius-pill)', padding: '10px 14px', color: 'var(--text-hi)', fontSize: 14, fontWeight: 650, cursor: 'pointer',
   },
   closeSidebarBtn: {
-    background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-mid)', borderRadius: 'var(--radius-sm)',
-    padding: '8px 10px', fontSize: 12.5, cursor: 'pointer',
+    background: 'var(--bg-elevated)', border: 'none', color: 'var(--text-mid)', borderRadius: 'var(--radius-pill)',
+    padding: '10px 14px', fontSize: 13, fontWeight: 550, cursor: 'pointer',
   },
-  content: { flex: 1, minWidth: 0, padding: '22px 26px', overflowY: 'auto' },
-  sectionTitle: { fontFamily: 'var(--font-display)', fontSize: 18, margin: '0 0 16px', color: 'var(--text-hi)' },
+  content: { flex: 1, minWidth: 0, padding: '26px 30px', overflowY: 'auto' },
+  sectionTitle: { fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, margin: '0 0 16px', color: 'var(--text-hi)' },
   block: { marginBottom: 22 },
-  label: { display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: 0.3, margin: '0 0 8px' },
+  label: { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-mid)', margin: '0 0 8px 4px' },
   select: {
-    width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-    padding: '9px 10px', color: 'var(--text-hi)', fontSize: 13, marginBottom: 12,
+    width: '100%', background: 'var(--bg-elevated)', border: '1px solid transparent', borderRadius: 14,
+    padding: '11px 12px', color: 'var(--text-hi)', fontSize: 13.5, marginBottom: 12, outline: 'none',
   },
   slider: { width: '100%', accentColor: 'var(--accent)' },
   testRow: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 },
-  meterTrack: { flex: 1, height: 8, borderRadius: 9, background: 'var(--bg-elevated)', overflow: 'hidden', border: '1px solid var(--border)' },
+  meterTrack: { flex: 1, height: 8, borderRadius: 9, background: 'var(--bg-elevated)', overflow: 'hidden' },
   meterFill: { height: '100%', background: 'var(--accent)', transition: 'width 0.08s linear' },
   smallBtn: {
     background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-hi)', borderRadius: 'var(--radius-sm)',
@@ -623,7 +688,7 @@ const styles = {
   },
   customGradRow: { display: 'flex', alignItems: 'center', gap: 14 },
   customColorField: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
-  customColorLabel: { fontSize: 10.5, color: 'var(--text-low)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 },
+  customColorLabel: { fontSize: 10.5, color: 'var(--text-low)', fontWeight: 700, letterSpacing: 0.3 },
   customGradPreview: { flex: 1, height: 34, borderRadius: 13, background: 'var(--accent-gradient)', border: '1px solid var(--border)' },
   resetLink: {
     background: 'transparent', border: 'none', color: 'var(--text-low)', fontSize: 11.5, fontWeight: 600,
@@ -680,7 +745,7 @@ const styles = {
   accountName: { fontSize: 13, fontWeight: 700, color: 'var(--text-hi)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   accountTag: { fontSize: 11, color: 'var(--text-low)' },
   activeBadge: {
-    fontSize: 10.5, fontWeight: 800, color: 'var(--accent)', background: 'rgba(255,255,255,0.06)',
+    fontSize: 10.5, fontWeight: 800, color: 'var(--accent)', background: 'color-mix(in srgb, var(--text-hi) 6%, transparent)',
     borderRadius: 9, padding: '4px 8px', flexShrink: 0,
   },
   accountSwitchBtn: {

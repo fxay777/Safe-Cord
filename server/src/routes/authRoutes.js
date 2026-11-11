@@ -4,30 +4,36 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { signToken, requireAuth } = require('../auth');
 const { effectiveStatus } = require('../statusUtils');
+const { sendVerificationEmail, isSmtpConfigured } = require('../mailer');
+const {
+  PUBLIC_USER_COLUMNS, parseUserRow, getPublicUser,
+  grantBadge, generateUniqueTag,
+} = require('../userUtils');
 
 const router = express.Router();
 
 const PALETTE = ['#2DD4BF', '#F0B429', '#818CF8', '#F87171', '#34D399', '#38BDF8'];
-const PUBLIC_USER_COLUMNS = 'id, username, tag, avatar_color, display_name, avatar_url, banner_url, bio, status, status_mode, spotify_track, connections';
 const MAX_CONNECTIONS = 6;
 const ALLOWED_PLATFORMS = new Set(['discord', 'x', 'instagram', 'youtube', 'twitch', 'github', 'steam', 'tiktok', 'site']);
 const STATUS_MODES = new Set(['online', 'idle', 'dnd', 'invisible']);
 
-function parseUserRow(row) {
-  if (!row) return row;
-  let connections = [];
-  try {
-    connections = JSON.parse(row.connections || '[]');
-  } catch {
-    connections = [];
-  }
-  let spotify_track = null;
-  try {
-    spotify_track = row.spotify_track ? JSON.parse(row.spotify_track) : null;
-  } catch {
-    spotify_track = null;
-  }
-  return { ...row, connections, spotify_track };
+const VERIFICATION_TTL_MS = 30 * 60 * 1000; // 30 minutos
+const RESEND_COOLDOWN_MS = 60 * 1000;       // 1 minuto entre reenvios
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function generateVerificationCode() {
+  return String(Math.floor(100000 + Math.random() * 900000)); // 6 dígitos
+}
+
+/** Gera, guarda e dispara um novo código de verificação pro usuário. */
+async function issueVerificationCode(user) {
+  const code = generateVerificationCode();
+  db.prepare(
+    'UPDATE users SET verification_code = ?, verification_expires = ?, verification_sent_at = ? WHERE id = ?'
+  ).run(code, Date.now() + VERIFICATION_TTL_MS, Date.now(), user.id);
+
+  const result = await sendVerificationEmail({ to: user.email, username: user.username, code });
+  return result; // { delivered, devCode }
 }
 
 function sanitizeConnections(raw) {
@@ -60,59 +66,169 @@ function sanitizeSpotifyTrack(raw) {
   };
 }
 
-router.post('/register', (req, res) => {
-  const { username, password } = req.body;
+router.post('/register', async (req, res) => {
+  const { username, password, email } = req.body || {};
+
   if (!username || !password || username.length < 3 || password.length < 6) {
     return res.status(400).json({ error: 'Usuário (min 3) e senha (min 6) são obrigatórios' });
   }
+  if (!/^[a-zA-Z0-9._-]+$/.test(username)) {
+    return res.status(400).json({ error: 'O nome de usuário só pode ter letras, números, ponto, hífen e underline' });
+  }
+  if (!email || !EMAIL_RE.test(String(email).trim())) {
+    return res.status(400).json({ error: 'Informe um email válido' });
+  }
 
-  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-  if (existing) return res.status(409).json({ error: 'Nome de usuário já existe' });
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const emailTaken = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(normalizedEmail);
+  if (emailTaken) return res.status(409).json({ error: 'Esse email já está em uso' });
+
+  // Diferente do antigo: o mesmo nome pode se repetir, o que identifica cada um é a tag (#0000).
+  const tag = generateUniqueTag(username);
+  if (!tag) return res.status(409).json({ error: 'Esse nome de usuário está cheio — escolha outro' });
 
   const id = uuidv4();
-  const tag = String(Math.floor(1000 + Math.random() * 9000));
   const password_hash = bcrypt.hashSync(password, 10);
   const avatar_color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
 
-  db.prepare(
-    `INSERT INTO users (id, username, tag, password_hash, avatar_color, display_name, avatar_url, banner_url, bio, status, status_mode, created_at)
-     VALUES (?, ?, ?, ?, ?, '', NULL, NULL, '', 'online', 'online', ?)`
-  ).run(id, username, tag, password_hash, avatar_color, Date.now());
+  try {
+    db.prepare(
+      `INSERT INTO users (id, username, tag, password_hash, avatar_color, display_name, avatar_url, banner_url,
+                          bio, status, status_mode, email, email_verified, created_at)
+       VALUES (?, ?, ?, ?, ?, '', NULL, NULL, '', 'online', 'online', ?, 0, ?)`
+    ).run(id, username, tag, password_hash, avatar_color, normalizedEmail, Date.now());
+  } catch (e) {
+    // Corrida rara: alguém pegou a mesma tag entre o sorteio e o insert
+    return res.status(409).json({ error: 'Não foi possível criar a conta agora — tente de novo' });
+  }
 
-  const user = { id, username, tag, avatar_color, display_name: '', avatar_url: null, banner_url: null, bio: '', status: 'online', status_mode: 'online', spotify_track: null, connections: [] };
+  // Os 100 primeiros ganham a insígnia de pioneiro — detalhe bobo mas dá vida ao perfil.
+  const totalUsers = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  if (totalUsers <= 100) grantBadge(id, 'early');
+  if (totalUsers === 1) grantBadge(id, 'founder');
+
+  let verification = { delivered: false, devCode: null };
+  try {
+    verification = await issueVerificationCode({ id, username, email: normalizedEmail });
+  } catch (e) {
+    console.error('Falha ao enviar email de verificação:', e.message);
+  }
+
+  const user = getPublicUser(id);
   const token = signToken(user);
-  res.status(201).json({ token, user });
+  res.status(201).json({
+    token,
+    user,
+    verification: {
+      required: true,
+      emailDelivered: verification.delivered,
+      devCode: verification.devCode, // só vem preenchido quando não há SMTP configurado
+    },
+  });
 });
 
 router.post('/login', (req, res) => {
-  const { username, password } = req.body;
-  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'Informe usuário e senha' });
+
+  // Aceita login por "nome#1234", por email, ou só pelo nome quando ele for único.
+  const identifier = String(username).trim();
+  let row = null;
+
+  if (identifier.includes('@')) {
+    row = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(identifier.toLowerCase());
+  } else if (identifier.includes('#')) {
+    const [name, tag] = identifier.split('#');
+    row = db.prepare('SELECT * FROM users WHERE username = ? AND tag = ?').get(name.trim(), tag.trim());
+  } else {
+    const matches = db.prepare('SELECT * FROM users WHERE username = ?').all(identifier);
+    if (matches.length > 1) {
+      return res.status(409).json({ error: 'Existe mais de uma conta com esse nome — entre usando nome#0000 ou seu email' });
+    }
+    row = matches[0] || null;
+  }
+
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
     return res.status(401).json({ error: 'Usuário ou senha inválidos' });
   }
+
   db.prepare('UPDATE users SET status = ? WHERE id = ?').run('online', row.id);
-  const user = parseUserRow({
-    id: row.id,
-    username: row.username,
-    tag: row.tag,
-    avatar_color: row.avatar_color,
-    display_name: row.display_name || '',
-    avatar_url: row.avatar_url || null,
-    banner_url: row.banner_url || null,
-    bio: row.bio || '',
-    status: row.status,
-    status_mode: row.status_mode || 'online',
-    spotify_track: row.spotify_track,
-    connections: row.connections,
-  });
+  const user = getPublicUser(row.id);
   const token = signToken(user);
   res.json({ token, user });
 });
 
 router.get('/me', requireAuth, (req, res) => {
-  const row = db.prepare(`SELECT ${PUBLIC_USER_COLUMNS} FROM users WHERE id = ?`).get(req.user.id);
+  const user = getPublicUser(req.user.id);
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+  res.json({ user });
+});
+
+// --- Verificação de email ---
+
+router.post('/verify-email', requireAuth, (req, res) => {
+  const { code } = req.body || {};
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!row) return res.status(404).json({ error: 'Usuário não encontrado' });
-  res.json({ user: parseUserRow(row) });
+  if (row.email_verified) return res.json({ user: getPublicUser(row.id), alreadyVerified: true });
+
+  if (!code || !row.verification_code) {
+    return res.status(400).json({ error: 'Informe o código que enviamos por email' });
+  }
+  if (row.verification_expires && row.verification_expires < Date.now()) {
+    return res.status(400).json({ error: 'Esse código expirou — peça um novo' });
+  }
+  if (String(code).trim() !== row.verification_code) {
+    return res.status(400).json({ error: 'Código incorreto' });
+  }
+
+  db.prepare(
+    'UPDATE users SET email_verified = 1, verification_code = NULL, verification_expires = NULL WHERE id = ?'
+  ).run(row.id);
+  grantBadge(row.id, 'verified');
+
+  res.json({ user: getPublicUser(row.id) });
+});
+
+router.post('/resend-verification', requireAuth, async (req, res) => {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!row) return res.status(404).json({ error: 'Usuário não encontrado' });
+  if (row.email_verified) return res.status(400).json({ error: 'Esse email já está verificado' });
+  if (!row.email) return res.status(400).json({ error: 'Sua conta não tem email cadastrado' });
+
+  const waited = Date.now() - (row.verification_sent_at || 0);
+  if (waited < RESEND_COOLDOWN_MS) {
+    const seconds = Math.ceil((RESEND_COOLDOWN_MS - waited) / 1000);
+    return res.status(429).json({ error: `Espere ${seconds}s antes de pedir outro código` });
+  }
+
+  try {
+    const result = await issueVerificationCode(row);
+    res.json({ emailDelivered: result.delivered, devCode: result.devCode, smtpConfigured: isSmtpConfigured() });
+  } catch (e) {
+    res.status(500).json({ error: 'Não foi possível enviar o email agora' });
+  }
+});
+
+// Troca o email e recomeça a verificação (ex: errou o endereço no cadastro)
+router.put('/me/email', requireAuth, async (req, res) => {
+  const { email } = req.body || {};
+  if (!email || !EMAIL_RE.test(String(email).trim())) {
+    return res.status(400).json({ error: 'Informe um email válido' });
+  }
+  const normalized = String(email).trim().toLowerCase();
+
+  const taken = db.prepare('SELECT id FROM users WHERE LOWER(email) = ? AND id != ?').get(normalized, req.user.id);
+  if (taken) return res.status(409).json({ error: 'Esse email já está em uso' });
+
+  db.prepare('UPDATE users SET email = ?, email_verified = 0 WHERE id = ?').run(normalized, req.user.id);
+  db.prepare('DELETE FROM user_badges WHERE user_id = ? AND badge_id = ?').run(req.user.id, 'verified');
+
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  let result = { delivered: false, devCode: null };
+  try { result = await issueVerificationCode(row); } catch (e) { /* o usuário pode reenviar */ }
+
+  res.json({ user: getPublicUser(req.user.id), emailDelivered: result.delivered, devCode: result.devCode });
 });
 
 // Atualiza os campos de texto do perfil. Foto e banner têm rotas próprias
@@ -145,8 +261,7 @@ router.put('/me/profile', requireAuth, (req, res) => {
     req.user.id
   );
 
-  const row = db.prepare(`SELECT ${PUBLIC_USER_COLUMNS} FROM users WHERE id = ?`).get(req.user.id);
-  res.json({ user: parseUserRow(row) });
+  res.json({ user: getPublicUser(req.user.id) });
 });
 
 // Muda o status de presença escolhido (online/ausente/não incomodar/invisível) e avisa
@@ -164,8 +279,7 @@ router.put('/me/status', requireAuth, (req, res) => {
     io.emit('presence:update', { userId: req.user.id, status: effectiveStatus(status_mode, true) });
   }
 
-  const row = db.prepare(`SELECT ${PUBLIC_USER_COLUMNS} FROM users WHERE id = ?`).get(req.user.id);
-  res.json({ user: parseUserRow(row) });
+  res.json({ user: getPublicUser(req.user.id) });
 });
 
 module.exports = router;

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { createApiClient, createSocket, uploadProfileImage, removeProfileImage, uploadServerImage, removeServerImage, updateServer, regenerateInviteCode, updateStatus } from './api';
+import { createApiClient, createSocket, uploadProfileImage, removeProfileImage, uploadServerImage, removeServerImage, updateServer, regenerateInviteCode, updateStatus, uploadMessageAttachment } from './api';
 import { useVoiceChannel } from './useVoiceChannel';
 import { useSettings } from './useSettings';
 import { useAccounts } from './useAccounts';
@@ -10,8 +10,11 @@ import ServerRail from './components/ServerRail';
 import ChannelSidebar from './components/ChannelSidebar';
 import ChatView from './components/ChatView';
 import MemberList from './components/MemberList';
-import CallPanel from './components/CallPanel';
-import ShareScreenModal from './components/ShareScreenModal';
+import ScreenShareViewer from './components/ScreenShareViewer';
+import ScreenSharePicker from './components/ScreenSharePicker';
+import ErrorBoundary from './components/ErrorBoundary';
+import VerifyEmailScreen from './components/VerifyEmailScreen';
+import ShopModal from './components/ShopModal';
 import ServerBanner from './components/ServerBanner';
 import DirectMessagesView from './components/DirectMessagesView';
 import SettingsModal from './components/SettingsModal';
@@ -35,10 +38,11 @@ export default function App() {
   const [voiceChannelId, setVoiceChannelId] = useState(null);
   const [categories, setCategories] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [callActive, setCallActive] = useState(false);
-  const [callMuted, setCallMuted] = useState(false);
-  const [cameraOn, setCameraOn] = useState(true);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [viewingScreenShare, setViewingScreenShare] = useState(null); // socketId | null
+  const [screenPickerOpen, setScreenPickerOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [pendingVerification, setPendingVerification] = useState(null); // {devCode} logo após o cadastro
+  const [skippedVerification, setSkippedVerification] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('voz');
   const [profileEditOpen, setProfileEditOpen] = useState(false);
@@ -101,9 +105,40 @@ export default function App() {
     }
   }
 
-  function handleAuth(newToken, newUser) {
+  function handleAuth(newToken, newUser, verification) {
     addOrSwitchAccount(newToken, newUser);
     setAddingAccount(false);
+    // Vindo do cadastro, guardamos o código de dev pra preencher a tela de verificação
+    setPendingVerification(verification?.required ? { devCode: verification.devCode } : null);
+    setSkippedVerification(false);
+  }
+
+  // Compartilhamento de tela: no app desktop abre o seletor de telas/janelas (igual ao
+  // Discord); no navegador, o próprio navegador mostra o seletor dele.
+  async function handleToggleScreenShare() {
+    if (voice.screenSharing) {
+      voice.stopScreenShare();
+      return;
+    }
+    if (window.safecord?.getScreenSources) {
+      setScreenPickerOpen(true);
+      return;
+    }
+    try {
+      await voice.startScreenShare();
+    } catch (err) {
+      console.error('Falha ao compartilhar tela:', err);
+    }
+  }
+
+  async function handlePickScreenSource(sourceId) {
+    try {
+      await voice.startScreenShare(sourceId);
+      setScreenPickerOpen(false);
+    } catch (err) {
+      console.error('Falha ao compartilhar tela:', err);
+      setScreenPickerOpen(false);
+    }
   }
 
   function logoutCurrent() {
@@ -379,8 +414,8 @@ export default function App() {
     setMessages(data.messages);
   }
 
-  function sendMessage(content) {
-    socket.emit('message:send', { channelId: activeChannel.id, content });
+  function sendMessage(content, attachments = []) {
+    socket.emit('message:send', { channelId: activeChannel.id, content, attachments });
   }
 
   // --- Categorias (Grupos) ---
@@ -447,11 +482,6 @@ export default function App() {
     if (voiceChannelId === channelId) setVoiceChannelId(null);
   }
 
-  function handleShareScreen() {
-    setCallActive(true);
-    setShareModalOpen(false);
-  }
-
   async function createServer(name) {
     const { data } = await api.post('/servers', { name });
     setServers((prev) => [...prev, data.server]);
@@ -489,6 +519,23 @@ export default function App() {
     return <AuthScreen onAuth={handleAuth} onCancel={() => setAddingAccount(false)} />;
   }
 
+  // Depois do cadastro, pede o código do email antes de abrir o app (dá pra pular)
+  if (user.email && !user.email_verified && !skippedVerification) {
+    return (
+      <VerifyEmailScreen
+        api={api}
+        user={user}
+        devCode={pendingVerification?.devCode}
+        onVerified={(updated) => {
+          updateActiveUser(updated);
+          setPendingVerification(null);
+        }}
+        onSkip={() => setSkippedVerification(true)}
+        onLogout={logoutCurrent}
+      />
+    );
+  }
+
   return (
     <div style={styles.appWrap}>
       <ServerRail
@@ -510,6 +557,7 @@ export default function App() {
       />
 
       {view === 'friends' ? (
+        <ErrorBoundary label="Amigos e Conversas">
         <DirectMessagesView
           api={api}
           socket={socket}
@@ -529,9 +577,16 @@ export default function App() {
           voiceError={voice.error}
           onToggleVoiceMute={voice.toggleMute}
           onLeaveVoice={() => { voice.leave(); setVoiceChannelId(null); }}
+          onUploadAttachment={(file) => uploadMessageAttachment(api, file)}
+          screenSharing={voice.screenSharing}
+          onToggleScreenShare={handleToggleScreenShare}
+          remoteScreenShares={voice.remoteScreenShares}
+          onViewScreenShare={setViewingScreenShare}
+          onOpenShop={() => setShopOpen(true)}
         />
+        </ErrorBoundary>
       ) : (
-        <>
+        <ErrorBoundary label="Servidor">
           <div style={styles.middleCol}>
             <ChannelSidebar
               server={activeServer}
@@ -574,22 +629,11 @@ export default function App() {
               voiceError={voice.error}
               onToggleVoiceMute={voice.toggleMute}
               onLeaveVoice={() => { voice.leave(); setVoiceChannelId(null); }}
-            />
-
-            <CallPanel
-              active={callActive}
-              participants={members.slice(0, 4).map((member) => ({
-                id: member.id,
-                name: member.display_name || member.username,
-                color: member.avatar_color || 'var(--accent)',
-                status: member.status || 'online',
-              }))}
-              muted={callMuted}
-              cameraOn={cameraOn}
-              onToggleMute={() => setCallMuted((prev) => !prev)}
-              onToggleCamera={() => setCameraOn((prev) => !prev)}
-              onShareScreen={() => setShareModalOpen(true)}
-              onLeave={() => setCallActive(false)}
+              screenSharing={voice.screenSharing}
+              onToggleScreenShare={handleToggleScreenShare}
+              remoteScreenShares={voice.remoteScreenShares}
+              onViewScreenShare={setViewingScreenShare}
+              onOpenShop={() => setShopOpen(true)}
             />
 
             {voice.connecting && !voice.connected && (
@@ -614,19 +658,38 @@ export default function App() {
               channel={activeChannel}
               messages={messages}
               onSend={sendMessage}
+              onTyping={() => activeChannel && socket.emit('typing', { channelId: activeChannel.id })}
+              onUploadAttachment={(file) => uploadMessageAttachment(api, file)}
               typingUsers={typingUsers}
             />
           </div>
 
           <MemberList members={members} />
-        </>
+        </ErrorBoundary>
       )}
 
-      <ShareScreenModal
-        open={shareModalOpen}
-        onClose={() => setShareModalOpen(false)}
-        onShare={handleShareScreen}
+      {screenPickerOpen && (
+        <ScreenSharePicker
+          loadSources={voice.getScreenSources}
+          onPick={handlePickScreenSource}
+          onClose={() => setScreenPickerOpen(false)}
+        />
+      )}
+
+      <ScreenShareViewer
+        stream={voice.remoteScreenShares?.get(viewingScreenShare)}
+        viewerName={voice.participants.find((p) => p.socketId === viewingScreenShare)?.user?.username}
+        onClose={() => setViewingScreenShare(null)}
       />
+
+      {shopOpen && (
+        <ShopModal
+          api={api}
+          user={user}
+          onClose={() => setShopOpen(false)}
+          onUserUpdated={updateActiveUser}
+        />
+      )}
 
       <SettingsModal
         open={settingsOpen}
@@ -637,6 +700,7 @@ export default function App() {
         isCustom={settingsHook.isCustom}
         setPreset={settingsHook.setPreset}
         setCustomGradient={settingsHook.setCustomGradient}
+        setMode={settingsHook.setMode}
         setAudio={settingsHook.setAudio}
         voice={voice}
         accounts={accounts}
@@ -663,9 +727,20 @@ export default function App() {
 }
 
 const styles = {
-  appWrap: { display: 'flex', height: '100%' },
-  middleCol: { display: 'flex', flexDirection: 'column', width: 260, height: '100%' },
-  mainChatArea: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 },
+  // Layout "flutuante" no estilo Stoat: a barra de servidores fica direto na moldura e
+  // cada coluna vira um painel arredondado, com um respiro entre eles.
+  appWrap: {
+    display: 'flex', height: '100%', gap: 'var(--panel-gap)',
+    padding: 'var(--panel-gap) var(--panel-gap) var(--panel-gap) 0', background: 'var(--bg-void)',
+  },
+  middleCol: {
+    display: 'flex', flexDirection: 'column', width: 264, height: '100%', flexShrink: 0,
+    background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+  },
+  mainChatArea: {
+    flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0,
+    background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+  },
   voiceConnectingBanner: {
     padding: '8px 12px', fontSize: 11.5, color: 'var(--text-mid)', background: 'var(--bg-elevated)',
     borderTop: '1px solid var(--border)', textAlign: 'center',

@@ -1,3 +1,4 @@
+import { ShopIcon } from './Icons';
 import React, { useState } from 'react';
 import { resolveAssetUrl } from '../api';
 import UserProfilePopup, { statusMeta } from './UserProfilePopup';
@@ -5,6 +6,7 @@ import UserProfilePopup, { statusMeta } from './UserProfilePopup';
 // Barra de usuário fixa (estilo Discord): avatar + nome, mudo de microfone,
 // ensurdecer e acesso rápido às configurações de voz/aparência.
 export default function UserBar({
+  onOpenShop,
   user, micMuted, deafened, inCall, onToggleMic, onToggleDeafen, onOpenSettings,
   onOpenProfile, onChangeStatus, onOpenAccounts,
 }) {
@@ -48,6 +50,11 @@ export default function UserBar({
         >
           <HeadsetIcon deafened={deafened} />
         </button>
+        {onOpenShop && (
+          <button type="button" style={styles.iconBtn(false)} onClick={onOpenShop} title="Loja e insígnias">
+            <ShopIcon size={16} />
+          </button>
+        )}
         <button type="button" style={styles.iconBtn(false)} onClick={onOpenSettings} title="Configurações de voz e aparência">
           <GearIcon />
         </button>
@@ -106,9 +113,10 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    padding: '8px',
-    background: 'var(--bg-void)',
-    borderTop: '1px solid var(--border)',
+    padding: 6,
+    margin: '0 8px 8px',
+    background: 'var(--bg-elevated)',
+    borderRadius: 20,
     flexShrink: 0,
     position: 'relative',
   },
@@ -120,8 +128,8 @@ const styles = {
     minWidth: 0,
     background: 'transparent',
     border: 'none',
-    borderRadius: 'var(--radius-sm)',
-    padding: '4px 6px',
+    borderRadius: 'var(--radius-pill)',
+    padding: '4px 8px 4px 4px',
     cursor: 'pointer',
     textAlign: 'left',
     transition: 'background 0.12s',
@@ -129,17 +137,17 @@ const styles = {
   avatarWrap: { position: 'relative', flexShrink: 0 },
   avatar: { width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: '#fff' },
   avatarImg: { width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' },
-  statusDot: { position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: '50%', border: '2px solid var(--bg-void)' },
+  statusDot: { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', border: '3px solid var(--bg-elevated)' },
   meta: { minWidth: 0 },
-  name: { fontSize: 13, fontWeight: 700, color: 'var(--text-hi)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 118 },
-  tag: { fontSize: 10.5, color: 'var(--text-low)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 118 },
+  name: { fontSize: 13.5, fontWeight: 650, color: 'var(--text-hi)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 118 },
+  tag: { fontSize: 11.5, color: 'var(--text-low)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 118 },
   actions: { display: 'flex', gap: 2, flexShrink: 0 },
   iconBtn: (active) => ({
-    width: 30,
-    height: 30,
-    borderRadius: 'var(--radius-sm)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     border: 'none',
-    background: active ? 'rgba(240, 101, 79, 0.16)' : 'transparent',
+    background: active ? 'color-mix(in srgb, var(--danger) 18%, transparent)' : 'transparent',
     color: active ? 'var(--danger)' : 'var(--text-mid)',
     display: 'flex',
     alignItems: 'center',

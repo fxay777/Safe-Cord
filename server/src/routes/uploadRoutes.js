@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../auth');
-const { upload, saveAvatar, saveBanner, saveServerIcon, saveServerBanner, removeIfLocalUpload } = require('../uploads');
+const { upload, saveAvatar, saveBanner, saveServerIcon, saveServerBanner, removeIfLocalUpload, uploadAttachment, saveMessageAttachment } = require('../uploads');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -111,6 +111,26 @@ router.delete('/server/:serverId/banner', requireServerOwner, (req, res) => {
   db.prepare('UPDATE servers SET banner_url = NULL WHERE id = ?').run(req.server.id);
   removeIfLocalUpload(req.server.banner_url);
   res.json({ server: getServerRow(req.server.id) });
+});
+
+// --- Anexo de imagem/vídeo em mensagem (canal de servidor ou DM) ---
+// Qualquer usuário autenticado pode subir; a checagem de que ele pode mandar mensagem
+// naquele canal/conversa acontece no socket, na hora do envio de verdade.
+function handleAttachmentUpload(req, res, next) {
+  uploadAttachment.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Falha no upload' });
+    next();
+  });
+}
+
+router.post('/message-attachment', handleAttachmentUpload, async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+  try {
+    const attachment = await saveMessageAttachment(req.file.buffer, req.file.mimetype, req.user.id, req.file.originalname);
+    res.json({ attachment });
+  } catch (e) {
+    res.status(500).json({ error: 'Não foi possível processar o arquivo' });
+  }
 });
 
 module.exports = router;

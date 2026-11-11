@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { resolveAssetUrl } from '../api';
 import {
-  CameraIcon, MusicIcon, LinkIcon, TrashIcon, CheckIcon,
+  CameraIcon, MusicIcon, LinkIcon, TrashIcon, CheckIcon, CloseIcon, UserIcon, SearchIcon,
   GameControllerIcon, GithubIcon, DiceIcon, TwitchIcon,
   PlayCircleIcon, CameraSquareIcon, TikTokIcon, GlobeIcon,
 } from './Icons';
 import { SpotifyMiniCard } from './UserProfilePopup';
+import BadgeRow from './BadgeRow';
 
 function XLogoIcon({ size = 16, ...props }) {
   return (
@@ -17,61 +18,79 @@ function XLogoIcon({ size = 16, ...props }) {
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-const AVATAR_COLORS = ['#2DD4BF', '#F0B429', '#818CF8', '#F87171', '#34D399', '#38BDF8', '#F0568C', '#8BD450'];
+const NAME_MAX = 40;
+const BIO_MAX = 220;
+const MAX_CONNECTIONS = 6;
+
+// Paleta do perfil: tons que combinam com o azul claro do app, mais algumas cores vivas
+const PROFILE_COLORS = [
+  '#3A9BFF', '#7CC4FF', '#A9D8FF', '#5B8CFF', '#8B7CFF',
+  '#FF7EB6', '#FF8A65', '#FFC857', '#4CD6A0', '#2EC4C4',
+];
 
 const PLATFORMS = [
-  { id: 'discord', label: 'Discord', Icon: GameControllerIcon, placeholder: 'usuario#0000' },
-  { id: 'x', label: 'X / Twitter', Icon: XLogoIcon, placeholder: '@usuario' },
-  { id: 'instagram', label: 'Instagram', Icon: CameraSquareIcon, placeholder: '@usuario' },
-  { id: 'youtube', label: 'YouTube', Icon: PlayCircleIcon, placeholder: '@canal' },
-  { id: 'twitch', label: 'Twitch', Icon: TwitchIcon, placeholder: 'usuario' },
-  { id: 'github', label: 'GitHub', Icon: GithubIcon, placeholder: 'usuario' },
-  { id: 'steam', label: 'Steam', Icon: DiceIcon, placeholder: 'usuario' },
-  { id: 'tiktok', label: 'TikTok', Icon: TikTokIcon, placeholder: '@usuario' },
-  { id: 'site', label: 'Site pessoal', Icon: GlobeIcon, placeholder: 'https://...' },
+  { id: 'discord', label: 'Discord', Icon: GameControllerIcon, placeholder: 'usuario#0000', color: '#5865F2' },
+  { id: 'x', label: 'X / Twitter', Icon: XLogoIcon, placeholder: '@usuario', color: '#8899A6' },
+  { id: 'instagram', label: 'Instagram', Icon: CameraSquareIcon, placeholder: '@usuario', color: '#E1306C' },
+  { id: 'youtube', label: 'YouTube', Icon: PlayCircleIcon, placeholder: '@canal', color: '#FF3B30' },
+  { id: 'twitch', label: 'Twitch', Icon: TwitchIcon, placeholder: 'usuario', color: '#9146FF' },
+  { id: 'github', label: 'GitHub', Icon: GithubIcon, placeholder: 'usuario', color: '#8B949E' },
+  { id: 'steam', label: 'Steam', Icon: DiceIcon, placeholder: 'usuario', color: '#66C0F4' },
+  { id: 'tiktok', label: 'TikTok', Icon: TikTokIcon, placeholder: '@usuario', color: '#25C4BE' },
+  { id: 'site', label: 'Site', Icon: GlobeIcon, placeholder: 'https://...', color: '#3A9BFF' },
+];
+
+const TABS = [
+  { id: 'perfil', label: 'Perfil', Icon: UserIcon },
+  { id: 'musica', label: 'Música', Icon: MusicIcon },
+  { id: 'conexoes', label: 'Conexões', Icon: LinkIcon },
 ];
 
 function platformMeta(id) {
   return PLATFORMS.find((p) => p.id === id) || PLATFORMS[PLATFORMS.length - 1];
 }
 
-function emptyDraft(user) {
+function draftFrom(user, fallbackColor) {
   return {
     display_name: user?.display_name || '',
     bio: user?.bio || '',
-    avatar_color: user?.avatar_color || null,
+    avatar_color: user?.avatar_color || fallbackColor,
     spotify_track: user?.spotify_track || null,
     connections: user?.connections ? [...user.connections] : [],
   };
 }
 
-export default function ProfileEditModal({ open, user, api, onClose, onSaveProfile, onUploadProfileImage, onRemoveProfileImage, themeAccent = '#38BDF8' }) {
-  const [draft, setDraft] = useState(() => ({ ...emptyDraft(user), avatar_color: user?.avatar_color || themeAccent }));
+export default function ProfileEditModal({
+  open, user, api, onClose, onSaveProfile, onUploadProfileImage, onRemoveProfileImage, themeAccent = '#3A9BFF',
+}) {
+  const [tab, setTab] = useState('perfil');
+  const [draft, setDraft] = useState(() => draftFrom(user, themeAccent));
   const [localPreview, setLocalPreview] = useState({ avatar: null, banner: null });
   const [uploading, setUploading] = useState({ avatar: false, banner: false });
-  const [imageError, setImageError] = useState({ avatar: '', banner: '' });
+  const [imageError, setImageError] = useState('');
   const [musicQuery, setMusicQuery] = useState('');
   const [musicResults, setMusicResults] = useState([]);
   const [musicSearching, setMusicSearching] = useState(false);
   const [musicError, setMusicError] = useState('');
   const [musicConfigured, setMusicConfigured] = useState(true);
-  const [addingConnection, setAddingConnection] = useState(false);
-  const [newConnPlatform, setNewConnPlatform] = useState('discord');
+  const [newConnPlatform, setNewConnPlatform] = useState(null);
   const [newConnValue, setNewConnValue] = useState('');
   const [saving, setSaving] = useState(false);
-
-  const avatarUrl = resolveAssetUrl(user?.avatar_url);
-  const bannerUrl = resolveAssetUrl(user?.banner_url);
-  const initials = (draft.display_name || user?.username || '?').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     if (open) {
-      setDraft({ ...emptyDraft(user), avatar_color: user?.avatar_color || themeAccent });
-      setAddingConnection(false);
+      setDraft(draftFrom(user, themeAccent));
+      setTab('perfil');
+      setNewConnPlatform(null);
+      setNewConnValue('');
       setMusicQuery('');
       setMusicResults([]);
+      setImageError('');
+      setSaveError('');
     }
-  }, [open, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open || !api) return;
@@ -81,7 +100,7 @@ export default function ProfileEditModal({ open, user, api, onClose, onSaveProfi
   useEffect(() => {
     if (!musicQuery.trim() || !api) {
       setMusicResults([]);
-      return;
+      return undefined;
     }
     setMusicSearching(true);
     setMusicError('');
@@ -94,31 +113,45 @@ export default function ProfileEditModal({ open, user, api, onClose, onSaveProfi
     return () => clearTimeout(timer);
   }, [musicQuery, api]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  const original = useMemo(() => draftFrom(user, themeAccent), [user, themeAccent]);
+  const dirty = JSON.stringify(original) !== JSON.stringify(draft);
+
   if (!open) return null;
+
+  const avatarUrl = resolveAssetUrl(user?.avatar_url);
+  const bannerUrl = resolveAssetUrl(user?.banner_url);
+  const shownAvatar = localPreview.avatar || avatarUrl;
+  const shownBanner = localPreview.banner || bannerUrl;
+  const shownName = draft.display_name.trim() || user?.username || 'Você';
+  const initials = shownName.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
 
   async function handleImageSelect(kind, event) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-
     if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
-      setImageError((prev) => ({ ...prev, [kind]: 'Formato não suportado. Use PNG, JPG, WEBP ou GIF.' }));
+      setImageError('Formato não suportado. Use PNG, JPG, WEBP ou GIF.');
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setImageError((prev) => ({ ...prev, [kind]: 'Imagem muito grande (máx. 8MB).' }));
+      setImageError('Imagem muito grande (máx. 8MB).');
       return;
     }
-
-    setImageError((prev) => ({ ...prev, [kind]: '' }));
+    setImageError('');
     const localUrl = URL.createObjectURL(file);
     setLocalPreview((prev) => ({ ...prev, [kind]: localUrl }));
     setUploading((prev) => ({ ...prev, [kind]: true }));
-
     try {
       await onUploadProfileImage(kind, file);
     } catch (err) {
-      setImageError((prev) => ({ ...prev, [kind]: err?.response?.data?.error || 'Falha ao enviar a imagem' }));
+      setImageError(err?.response?.data?.error || 'Falha ao enviar a imagem');
     } finally {
       setUploading((prev) => ({ ...prev, [kind]: false }));
       URL.revokeObjectURL(localUrl);
@@ -130,19 +163,19 @@ export default function ProfileEditModal({ open, user, api, onClose, onSaveProfi
     try {
       await onRemoveProfileImage(kind);
     } catch {
-      setImageError((prev) => ({ ...prev, [kind]: 'Falha ao remover a imagem' }));
+      setImageError('Falha ao remover a imagem');
     }
   }
 
   function addConnection() {
     const value = newConnValue.trim();
-    if (!value) return;
+    if (!value || !newConnPlatform) return;
     setDraft((prev) => ({
       ...prev,
       connections: [...prev.connections, { platform: newConnPlatform, label: value, url: value }],
     }));
     setNewConnValue('');
-    setAddingConnection(false);
+    setNewConnPlatform(null);
   }
 
   function removeConnection(index) {
@@ -151,6 +184,7 @@ export default function ProfileEditModal({ open, user, api, onClose, onSaveProfi
 
   async function handleSave() {
     setSaving(true);
+    setSaveError('');
     try {
       await onSaveProfile({
         display_name: draft.display_name,
@@ -160,374 +194,549 @@ export default function ProfileEditModal({ open, user, api, onClose, onSaveProfi
         connections: draft.connections,
       });
       onClose();
+    } catch (err) {
+      setSaveError(err?.response?.data?.error || 'Não foi possível salvar. Tente de novo.');
     } finally {
       setSaving(false);
     }
   }
 
-  const shownAvatar = localPreview.avatar || avatarUrl;
-  const shownBanner = localPreview.banner || bannerUrl;
+  const bannerStyle = shownBanner
+    ? { backgroundImage: `url(${shownBanner})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : { background: `linear-gradient(135deg, ${draft.avatar_color}, var(--accent-secondary))` };
 
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.card} onClick={(e) => e.stopPropagation()}>
-        <button type="button" style={styles.closeBtn} onClick={onClose}>×</button>
-
-        {/* HERO: banner + avatar */}
-        <div style={styles.hero}>
-          <div
-            style={{
-              ...styles.banner,
-              ...(shownBanner
-                ? { backgroundImage: `url(${shownBanner})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-                : { background: `linear-gradient(135deg, ${draft.avatar_color}, #0284c7)` }),
-              opacity: uploading.banner ? 0.55 : 1,
-            }}
-          >
-            <label style={styles.bannerEditBtn} title="Trocar banner">
-              <CameraIcon size={14} />
-              <input type="file" accept="image/*" style={styles.hiddenInput} onChange={(e) => handleImageSelect('banner', e)} disabled={uploading.banner} />
-            </label>
-            {bannerUrl && !uploading.banner && (
-              <button type="button" style={styles.bannerRemoveBtn} onClick={() => handleRemoveImage('banner')} title="Remover banner"><TrashIcon size={13} /></button>
-            )}
+        {/* ── COLUNA DO FORMULÁRIO ─────────────────────────── */}
+        <div style={styles.formCol}>
+          <div style={styles.header}>
+            <h2 style={styles.title}>Editar perfil</h2>
+            <div style={styles.subtitle}>É assim que a galera te vê no SafeCord</div>
           </div>
 
-          <div style={styles.avatarWrap}>
-            {shownAvatar ? (
-              <img src={shownAvatar} alt="avatar" style={{ ...styles.avatarImg, opacity: uploading.avatar ? 0.55 : 1 }} />
-            ) : (
-              <div style={{ ...styles.avatarFallback, background: draft.avatar_color }}>{initials}</div>
-            )}
-            <label style={styles.avatarEditBtn} title="Trocar foto">
-              <CameraIcon size={12} />
-              <input type="file" accept="image/*" style={styles.hiddenInput} onChange={(e) => handleImageSelect('avatar', e)} disabled={uploading.avatar} />
-            </label>
-          </div>
-        </div>
-
-        {(imageError.avatar || imageError.banner) && (
-          <div style={styles.errorBanner}>{imageError.avatar || imageError.banner}</div>
-        )}
-
-        <div style={styles.body}>
-          {/* NOME + BIO */}
-          <div style={styles.section}>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Nome de exibição</label>
-              <input
-                value={draft.display_name}
-                onChange={(e) => setDraft((prev) => ({ ...prev, display_name: e.target.value }))}
-                style={styles.input}
-                placeholder={user?.username || 'Seu nome'}
-                maxLength={40}
-              />
-            </div>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Bio</label>
-              <textarea
-                value={draft.bio}
-                onChange={(e) => setDraft((prev) => ({ ...prev, bio: e.target.value }))}
-                style={styles.textarea}
-                rows={3}
-                maxLength={220}
-                placeholder="Conte um pouco sobre você"
-              />
-              <div style={styles.charCount}>{draft.bio.length}/220</div>
-            </div>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Cor do avatar</label>
-              <div style={styles.colorRow}>
-                {AVATAR_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setDraft((prev) => ({ ...prev, avatar_color: color }))}
-                    style={{ ...styles.colorSwatch, background: color, ...(draft.avatar_color === color ? styles.colorSwatchActive : {}) }}
-                    title={color}
-                  >
-                    {draft.avatar_color === color && <CheckIcon size={12} />}
-                  </button>
-                ))}
-                <input
-                  type="color"
-                  value={draft.avatar_color}
-                  onChange={(e) => setDraft((prev) => ({ ...prev, avatar_color: e.target.value }))}
-                  style={styles.colorPicker}
-                />
-              </div>
-            </div>
+          <div style={styles.tabs}>
+            {TABS.map((t) => {
+              const active = tab === t.id;
+              return (
+                <button key={t.id} type="button" onClick={() => setTab(t.id)} style={{ ...styles.tab, ...(active ? styles.tabActive : {}) }}>
+                  <t.Icon size={14} /> {t.label}
+                  {t.id === 'conexoes' && draft.connections.length > 0 && <span style={styles.tabCount}>{draft.connections.length}</span>}
+                </button>
+              );
+            })}
           </div>
 
-          <div style={styles.divider} />
-
-          {/* MÚSICA (Spotify) */}
-          <div style={styles.section}>
-            <div style={styles.sectionHeader}>
-              <span style={styles.sectionIcon}><MusicIcon size={15} /></span>
-              <span style={styles.sectionTitle}>Música do perfil</span>
-            </div>
-
-            {!musicConfigured ? (
-              <div style={styles.hint}>
-                Busca do Spotify não configurada neste servidor. Peça ao administrador para adicionar as credenciais no arquivo <code>.env</code>.
-              </div>
-            ) : (
+          <div style={styles.formBody}>
+            {tab === 'perfil' && (
               <>
-                {draft.spotify_track ? (
-                  <div style={styles.selectedTrackWrap}>
-                    <SpotifyMiniCard track={draft.spotify_track} />
-                    <button type="button" style={styles.smallGhostBtn} onClick={() => setDraft((prev) => ({ ...prev, spotify_track: null }))}>
-                      Remover
+                <Section title="Imagens">
+                  <div style={styles.imageRow}>
+                    <div style={styles.imageTile}>
+                      <div style={styles.avatarTilePreview}>
+                        {shownAvatar ? (
+                          <img src={shownAvatar} alt="" style={{ ...styles.avatarTileImg, opacity: uploading.avatar ? 0.5 : 1 }} />
+                        ) : (
+                          <div style={{ ...styles.avatarTileImg, ...styles.initials, background: draft.avatar_color }}>{initials}</div>
+                        )}
+                      </div>
+                      <div style={styles.imageTileMeta}>
+                        <div style={styles.imageTileTitle}>Foto de perfil</div>
+                        <div style={styles.imageTileHint}>Quadrada, até 8MB. GIF funciona.</div>
+                        <div style={styles.imageTileActions}>
+                          <label style={styles.pillBtnPrimary}>
+                            <CameraIcon size={13} /> {uploading.avatar ? 'Enviando…' : 'Trocar'}
+                            <input type="file" accept="image/*" style={styles.hiddenInput} onChange={(e) => handleImageSelect('avatar', e)} disabled={uploading.avatar} />
+                          </label>
+                          {avatarUrl && !uploading.avatar && (
+                            <button type="button" style={styles.pillBtnGhost} onClick={() => handleRemoveImage('avatar')}>Remover</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={styles.imageTile}>
+                      <div style={{ ...styles.bannerTilePreview, ...bannerStyle, opacity: uploading.banner ? 0.5 : 1 }} />
+                      <div style={styles.imageTileMeta}>
+                        <div style={styles.imageTileTitle}>Banner</div>
+                        <div style={styles.imageTileHint}>Sem banner, usamos um degradê da sua cor.</div>
+                        <div style={styles.imageTileActions}>
+                          <label style={styles.pillBtnPrimary}>
+                            <CameraIcon size={13} /> {uploading.banner ? 'Enviando…' : 'Trocar'}
+                            <input type="file" accept="image/*" style={styles.hiddenInput} onChange={(e) => handleImageSelect('banner', e)} disabled={uploading.banner} />
+                          </label>
+                          {bannerUrl && !uploading.banner && (
+                            <button type="button" style={styles.pillBtnGhost} onClick={() => handleRemoveImage('banner')}>Remover</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {imageError && <div style={styles.errorBox}>{imageError}</div>}
+                </Section>
+
+                <Section title="Nome de exibição" counter={`${draft.display_name.length}/${NAME_MAX}`}>
+                  <input
+                    value={draft.display_name}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, display_name: e.target.value }))}
+                    style={styles.input}
+                    placeholder={user?.username || 'Seu nome'}
+                    maxLength={NAME_MAX}
+                  />
+                </Section>
+
+                <Section title="Sobre mim" counter={`${draft.bio.length}/${BIO_MAX}`}>
+                  <textarea
+                    value={draft.bio}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, bio: e.target.value }))}
+                    style={styles.textarea}
+                    rows={3}
+                    maxLength={BIO_MAX}
+                    placeholder="Conte um pouco sobre você, seus jogos, o que curte…"
+                  />
+                </Section>
+
+                <Section title="Cor do perfil">
+                  <div style={styles.colorRow}>
+                    {PROFILE_COLORS.map((color) => {
+                      const active = draft.avatar_color?.toLowerCase() === color.toLowerCase();
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setDraft((prev) => ({ ...prev, avatar_color: color }))}
+                          style={{ ...styles.swatch, background: color, ...(active ? styles.swatchActive : {}) }}
+                          title={color}
+                        >
+                          {active && <CheckIcon size={13} />}
+                        </button>
+                      );
+                    })}
+                    <label style={styles.customSwatch} title="Escolher outra cor">
+                      <span style={{ ...styles.customSwatchDot, background: draft.avatar_color }} />
+                      <input
+                        type="color"
+                        value={draft.avatar_color || '#3A9BFF'}
+                        onChange={(e) => setDraft((prev) => ({ ...prev, avatar_color: e.target.value }))}
+                        style={styles.hiddenColorInput}
+                      />
+                    </label>
+                  </div>
+                </Section>
+              </>
+            )}
+
+            {tab === 'musica' && (
+              <Section title="Música do perfil" hint="Aparece no seu perfil com prévia de 30 segundos.">
+                {!musicConfigured ? (
+                  <div style={styles.emptyCard}>
+                    <span style={styles.emptyIcon}><MusicIcon size={20} /></span>
+                    <div>
+                      <div style={styles.emptyTitle}>Busca do Spotify desativada</div>
+                      <div style={styles.emptyText}>
+                        O servidor precisa das credenciais <code style={styles.code}>SPOTIFY_CLIENT_ID</code> e <code style={styles.code}>SPOTIFY_CLIENT_SECRET</code> no <code style={styles.code}>.env</code>.
+                      </div>
+                    </div>
+                  </div>
+                ) : draft.spotify_track ? (
+                  <div style={styles.trackSelected}>
+                    <div style={{ flex: 1, minWidth: 0 }}><SpotifyMiniCard track={draft.spotify_track} /></div>
+                    <button type="button" style={styles.pillBtnGhost} onClick={() => setDraft((prev) => ({ ...prev, spotify_track: null }))}>
+                      Trocar
                     </button>
                   </div>
                 ) : (
                   <>
-                    <input
-                      value={musicQuery}
-                      onChange={(e) => setMusicQuery(e.target.value)}
-                      style={styles.input}
-                      placeholder="Buscar uma música ou artista…"
-                    />
+                    <div style={styles.searchField}>
+                      <SearchIcon size={15} style={{ color: 'var(--text-low)', flexShrink: 0 }} />
+                      <input
+                        value={musicQuery}
+                        onChange={(e) => setMusicQuery(e.target.value)}
+                        style={styles.searchInput}
+                        placeholder="Buscar música ou artista…"
+                        autoFocus
+                      />
+                    </div>
                     {musicSearching && <div style={styles.hint}>Buscando…</div>}
-                    {musicError && <div style={styles.errorText}>{musicError}</div>}
+                    {musicError && <div style={styles.errorBox}>{musicError}</div>}
                     {musicResults.length > 0 && (
-                      <div style={styles.musicResultsList}>
+                      <div style={styles.trackList}>
                         {musicResults.map((t) => (
                           <button
                             key={t.id}
                             type="button"
-                            style={styles.musicResultRow}
+                            style={styles.trackRow}
                             onClick={() => { setDraft((prev) => ({ ...prev, spotify_track: t })); setMusicQuery(''); setMusicResults([]); }}
                           >
-                            {t.image && <img src={t.image} alt="" style={styles.musicResultArt} />}
+                            {t.image
+                              ? <img src={t.image} alt="" style={styles.trackArt} />
+                              : <span style={{ ...styles.trackArt, ...styles.trackArtEmpty }}><MusicIcon size={14} /></span>}
                             <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                              <div style={styles.musicResultTitle}>{t.name}</div>
-                              <div style={styles.musicResultArtist}>{t.artists}</div>
+                              <div style={styles.trackTitle}>{t.name}</div>
+                              <div style={styles.trackArtist}>{t.artists}</div>
                             </div>
                           </button>
                         ))}
                       </div>
                     )}
+                    {!musicQuery && <div style={styles.hint}>Escolha uma música que combine com você.</div>}
                   </>
                 )}
+              </Section>
+            )}
+
+            {tab === 'conexoes' && (
+              <>
+                <Section title="Adicionar conta" hint={`Até ${MAX_CONNECTIONS} contas aparecem no seu perfil.`}>
+                  <div style={styles.platformGrid}>
+                    {PLATFORMS.map((p) => {
+                      const active = newConnPlatform === p.id;
+                      const full = draft.connections.length >= MAX_CONNECTIONS;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          disabled={full}
+                          onClick={() => { setNewConnPlatform(active ? null : p.id); setNewConnValue(''); }}
+                          style={{ ...styles.platformTile, ...(active ? styles.platformTileActive : {}), opacity: full ? 0.45 : 1 }}
+                        >
+                          <span style={{ ...styles.platformIcon, color: p.color, background: `${p.color}1F` }}><p.Icon size={16} /></span>
+                          <span style={styles.platformLabel}>{p.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {newConnPlatform && (
+                    <div style={styles.addRow}>
+                      <input
+                        value={newConnValue}
+                        onChange={(e) => setNewConnValue(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addConnection()}
+                        style={{ ...styles.input, flex: 1 }}
+                        placeholder={`${platformMeta(newConnPlatform).label}: ${platformMeta(newConnPlatform).placeholder}`}
+                        autoFocus
+                      />
+                      <button type="button" style={styles.pillBtnPrimary} onClick={addConnection} disabled={!newConnValue.trim()}>
+                        Adicionar
+                      </button>
+                    </div>
+                  )}
+                </Section>
+
+                <Section title="Suas contas">
+                  {draft.connections.length === 0 ? (
+                    <div style={styles.hint}>Nenhuma conta conectada ainda.</div>
+                  ) : (
+                    <div style={styles.connList}>
+                      {draft.connections.map((c, i) => {
+                        const meta = platformMeta(c.platform);
+                        return (
+                          <div key={`${c.platform}-${i}`} style={styles.connRow}>
+                            <span style={{ ...styles.platformIcon, color: meta.color, background: `${meta.color}1F` }}><meta.Icon size={16} /></span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={styles.connPlatform}>{meta.label}</div>
+                              <div style={styles.connValue}>{c.label}</div>
+                            </div>
+                            <button type="button" style={styles.iconBtn} onClick={() => removeConnection(i)} title="Remover">
+                              <TrashIcon size={14} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Section>
               </>
             )}
           </div>
+        </div>
 
-          <div style={styles.divider} />
+        {/* ── COLUNA DA PRÉVIA (atualiza enquanto você edita) ── */}
+        <div style={styles.previewCol}>
+          <div style={styles.previewHeader}>
+            <span style={styles.previewLabel}>Prévia</span>
+            <button type="button" style={styles.closeBtn} onClick={onClose} aria-label="Fechar"><CloseIcon size={16} /></button>
+          </div>
 
-          {/* CONTAS CONECTADAS */}
-          <div style={styles.section}>
-            <div style={styles.sectionHeader}>
-              <span style={styles.sectionIcon}><LinkIcon size={15} /></span>
-              <span style={styles.sectionTitle}>Contas conectadas</span>
+          <div style={styles.profileCard}>
+            <div style={{ ...styles.profileBanner, ...bannerStyle }} />
+            <div style={styles.profileAvatarWrap}>
+              {shownAvatar ? (
+                <img src={shownAvatar} alt="" style={styles.profileAvatar} />
+              ) : (
+                <div style={{ ...styles.profileAvatar, ...styles.initials, fontSize: 28, background: draft.avatar_color }}>{initials}</div>
+              )}
+              <span style={styles.profileStatus} />
             </div>
 
-            {draft.connections.length > 0 && (
-              <div style={styles.connectionList}>
-                {draft.connections.map((c, i) => {
-                  const meta = platformMeta(c.platform);
-                  const MetaIcon = meta.Icon;
-                  return (
-                    <div key={`${c.platform}-${i}`} style={styles.connectionChip}>
-                      <span style={styles.connectionIcon}><MetaIcon size={16} /></span>
-                      <div style={styles.connectionMeta}>
-                        <div style={styles.connectionPlatform}>{meta.label}</div>
-                        <div style={styles.connectionValue}>{c.label}</div>
-                      </div>
-                      <button type="button" style={styles.connectionRemoveBtn} onClick={() => removeConnection(i)}>×</button>
-                    </div>
-                  );
-                })}
+            <div style={styles.profileBody}>
+              <div style={styles.profileName}>{shownName}</div>
+              <div style={styles.profileHandleRow}>
+                <span style={styles.profileHandle}>{user?.username}#{user?.tag}</span>
+                <BadgeRow badges={user?.badges} size={18} />
               </div>
-            )}
 
-            {addingConnection ? (
-              <div style={styles.addConnectionForm}>
-                <div style={styles.platformPickerRow}>
-                  {PLATFORMS.map((p) => {
-                    const PIcon = p.Icon;
-                    const active = newConnPlatform === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setNewConnPlatform(p.id)}
-                        style={{ ...styles.platformPickerBtn, ...(active ? styles.platformPickerBtnActive : {}) }}
-                        title={p.label}
-                      >
-                        <PIcon size={16} />
-                      </button>
-                    );
-                  })}
+              {(draft.bio || draft.spotify_track || draft.connections.length > 0) && <div style={styles.profileDivider} />}
+
+              {draft.bio && (
+                <div style={styles.profileBlock}>
+                  <div style={styles.profileBlockTitle}>Sobre mim</div>
+                  <div style={styles.profileBio}>{draft.bio}</div>
                 </div>
-                <div style={styles.hint}>{platformMeta(newConnPlatform).label}</div>
-                <input
-                  value={newConnValue}
-                  onChange={(e) => setNewConnValue(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addConnection()}
-                  style={styles.input}
-                  placeholder={platformMeta(newConnPlatform).placeholder}
-                  autoFocus
-                />
-                <div style={styles.addConnectionActions}>
-                  <button type="button" style={styles.secondaryBtn} onClick={() => setAddingConnection(false)}>Cancelar</button>
-                  <button type="button" style={styles.primaryBtnSm} onClick={addConnection} disabled={!newConnValue.trim()}>Adicionar</button>
+              )}
+
+              {draft.spotify_track && (
+                <div style={styles.profileBlock}>
+                  <div style={styles.profileBlockTitle}>Ouvindo</div>
+                  <SpotifyMiniCard track={draft.spotify_track} compact />
                 </div>
-              </div>
-            ) : (
-              draft.connections.length < 6 && (
-                <button type="button" style={styles.addConnectionBtn} onClick={() => setAddingConnection(true)}>
-                  + Conectar uma conta
-                </button>
-              )
-            )}
+              )}
+
+              {draft.connections.length > 0 && (
+                <div style={styles.profileBlock}>
+                  <div style={styles.profileBlockTitle}>Conexões</div>
+                  <div style={styles.profileConns}>
+                    {draft.connections.map((c, i) => {
+                      const meta = platformMeta(c.platform);
+                      return (
+                        <span key={`${c.platform}-${i}`} style={styles.profileConn}>
+                          <meta.Icon size={13} style={{ color: meta.color }} /> {c.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {!draft.bio && !draft.spotify_track && draft.connections.length === 0 && (
+                <div style={styles.profileEmpty}>Adicione uma bio, música ou conexões pra deixar seu perfil com a sua cara.</div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div style={styles.footer}>
-          <button type="button" style={styles.secondaryBtn} onClick={onClose}>Cancelar</button>
-          <button type="button" style={styles.primaryBtn} onClick={handleSave} disabled={saving}>
-            {saving ? 'Salvando…' : 'Salvar'}
-          </button>
-        </div>
+        {/* ── BARRA DE ALTERAÇÕES NÃO SALVAS ───────────────── */}
+        {(dirty || saveError) && (
+          <div style={styles.saveBar}>
+            <span style={styles.saveBarText}>{saveError || 'Cuidado — você tem alterações não salvas!'}</span>
+            <button type="button" style={styles.saveBarReset} onClick={() => setDraft(original)} disabled={saving}>Redefinir</button>
+            <button type="button" style={styles.saveBarSave} onClick={handleSave} disabled={saving}>
+              {saving ? 'Salvando…' : 'Salvar alterações'}
+            </button>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function Section({ title, hint, counter, children }) {
+  return (
+    <div style={styles.section}>
+      <div style={styles.sectionHead}>
+        <span style={styles.sectionTitle}>{title}</span>
+        {counter && <span style={styles.counter}>{counter}</span>}
+      </div>
+      {hint && <div style={{ ...styles.hint, marginTop: -4 }}>{hint}</div>}
+      {children}
     </div>
   );
 }
 
 const styles = {
   overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(5, 10, 18, 0.75)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+    position: 'fixed', inset: 0, background: 'var(--scrim)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90, padding: 20,
   },
   card: {
-    width: 480, maxWidth: '100%', maxHeight: '90vh', background: '#0b1320',
-    borderRadius: '16px', border: '1px solid rgba(56, 189, 248, 0.2)', overflow: 'hidden',
-    display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.7)', position: 'relative',
-    color: '#f8fafc', fontFamily: 'inherit',
+    position: 'relative', width: 900, maxWidth: '100%', height: 640, maxHeight: '92vh',
+    background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
+    boxShadow: 'var(--shadow-lg)', display: 'flex', overflow: 'hidden', color: 'var(--text-hi)',
   },
-  closeBtn: {
-    position: 'absolute', top: 12, right: 12, zIndex: 5, width: 32, height: 32, borderRadius: '50%',
-    border: '1px solid rgba(56, 189, 248, 0.2)', background: 'rgba(11, 19, 32, 0.7)', color: '#f8fafc',
-    fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
-    transition: 'all 0.2s',
+
+  // formulário
+  formCol: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' },
+  header: { padding: '24px 28px 14px' },
+  title: { margin: 0, fontSize: 21, fontWeight: 700, letterSpacing: -0.3, color: 'var(--text-hi)' },
+  subtitle: { fontSize: 13, color: 'var(--text-low)', marginTop: 3 },
+  tabs: { display: 'flex', gap: 6, padding: '0 28px 14px', borderBottom: '1px solid var(--border)' },
+  tab: {
+    display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', background: 'transparent',
+    color: 'var(--text-mid)', fontSize: 13.5, fontWeight: 600, padding: '8px 14px',
+    borderRadius: 'var(--radius-pill)', cursor: 'pointer',
   },
-  hero: { position: 'relative', flexShrink: 0 },
-  banner: { height: 136, position: 'relative', borderBottom: '1px solid rgba(56, 189, 248, 0.15)' },
-  bannerEditBtn: {
-    position: 'absolute', bottom: 12, right: 12, width: 34, height: 34, borderRadius: '50%',
-    background: 'rgba(11, 19, 32, 0.85)', border: '1px solid rgba(56, 189, 248, 0.3)', color: '#38bdf8',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+  tabActive: { background: 'var(--accent-soft)', color: 'var(--text-hi)' },
+  tabCount: {
+    minWidth: 18, height: 18, borderRadius: 9, background: 'var(--accent)', color: 'var(--accent-contrast)',
+    fontSize: 10.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px',
   },
-  bannerRemoveBtn: {
-    position: 'absolute', bottom: 12, right: 54, width: 34, height: 34, borderRadius: '50%',
-    border: '1px solid rgba(248, 113, 113, 0.3)', background: 'rgba(11, 19, 32, 0.85)', color: '#f87171',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+  formBody: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 28px 90px', display: 'flex', flexDirection: 'column', gap: 22 },
+
+  section: { display: 'flex', flexDirection: 'column', gap: 10 },
+  sectionHead: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' },
+  sectionTitle: { fontSize: 13.5, fontWeight: 650, color: 'var(--text-hi)' },
+  counter: { fontSize: 11.5, color: 'var(--text-low)', fontVariantNumeric: 'tabular-nums' },
+  hint: { fontSize: 12.5, color: 'var(--text-low)', lineHeight: 1.5 },
+
+  imageRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
+  imageTile: {
+    background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 20, padding: 12,
+    display: 'flex', flexDirection: 'column', gap: 10,
   },
+  avatarTilePreview: { height: 72, display: 'flex', alignItems: 'center' },
+  avatarTileImg: { width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', display: 'block' },
+  bannerTilePreview: { height: 72, borderRadius: 14 },
+  imageTileMeta: { display: 'flex', flexDirection: 'column', gap: 3 },
+  imageTileTitle: { fontSize: 13.5, fontWeight: 650, color: 'var(--text-hi)' },
+  imageTileHint: { fontSize: 11.5, color: 'var(--text-low)', lineHeight: 1.4 },
+  imageTileActions: { display: 'flex', gap: 6, marginTop: 8 },
+  initials: { display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--on-color)', fontWeight: 700, fontSize: 22 },
   hiddenInput: { display: 'none' },
-  avatarWrap: { position: 'absolute', left: 22, bottom: -38 },
-  avatarImg: { width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', border: '4px solid #0b1320', display: 'block', boxShadow: '0 6px 16px rgba(0,0,0,0.5)' },
-  avatarFallback: {
-    width: 88, height: 88, borderRadius: '50%', border: '4px solid #0b1320', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 28,
-    boxShadow: '0 6px 16px rgba(0,0,0,0.5)',
+
+  pillBtnPrimary: {
+    display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', background: 'var(--accent)',
+    color: 'var(--accent-contrast)', fontWeight: 650, fontSize: 12.5, padding: '8px 14px',
+    borderRadius: 'var(--radius-pill)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
   },
-  avatarEditBtn: {
-    position: 'absolute', right: -2, bottom: 2, width: 30, height: 30, borderRadius: '50%',
-    background: '#121d31', border: '3px solid #0b1320', color: '#38bdf8',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, cursor: 'pointer',
-    boxShadow: '0 4px 10px rgba(0,0,0,0.4)',
+  pillBtnGhost: {
+    display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', background: 'var(--bg-elevated)',
+    color: 'var(--text-mid)', fontWeight: 600, fontSize: 12.5, padding: '8px 14px',
+    borderRadius: 'var(--radius-pill)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
   },
-  errorBanner: { margin: '48px 22px 0', fontSize: 12, color: '#f87171', background: 'rgba(248, 113, 113, 0.1)', border: '1px solid rgba(248, 113, 113, 0.3)', padding: '8px 12px', borderRadius: 8 },
-  body: { padding: '50px 24px 16px', overflowY: 'auto', flex: 1, minHeight: 0 },
-  section: { display: 'flex', flexDirection: 'column', gap: 14 },
-  sectionHeader: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 },
-  sectionIcon: { color: '#38bdf8', display: 'flex', alignItems: 'center' },
-  sectionTitle: { fontSize: 13.5, fontWeight: 700, color: '#f8fafc', letterSpacing: '0.3px' },
-  divider: { height: 1, background: 'rgba(56, 189, 248, 0.1)', margin: '20px 0' },
-  fieldGroup: { display: 'flex', flexDirection: 'column', gap: 6 },
-  label: { fontSize: 11, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: 0.6 },
+
   input: {
-    width: '100%', boxSizing: 'border-box', background: '#111b2d', border: '1px solid rgba(56, 189, 248, 0.2)',
-    borderRadius: 10, padding: '10px 14px', color: '#f8fafc', fontSize: 13.5, outline: 'none',
-    transition: 'border-color 0.2s, box-shadow 0.2s',
+    width: '100%', boxSizing: 'border-box', background: 'var(--bg-elevated)', border: '1px solid transparent',
+    borderRadius: 14, padding: '12px 14px', color: 'var(--text-hi)', fontSize: 14, outline: 'none',
   },
   textarea: {
-    width: '100%', boxSizing: 'border-box', background: '#111b2d', border: '1px solid rgba(56, 189, 248, 0.2)',
-    borderRadius: 10, padding: '10px 14px', color: '#f8fafc', fontSize: 13.5,
-    fontFamily: 'inherit', resize: 'vertical', outline: 'none',
-    transition: 'border-color 0.2s, box-shadow 0.2s',
+    width: '100%', boxSizing: 'border-box', background: 'var(--bg-elevated)', border: '1px solid transparent',
+    borderRadius: 16, padding: '12px 14px', color: 'var(--text-hi)', fontSize: 14, lineHeight: 1.5,
+    fontFamily: 'inherit', resize: 'none', outline: 'none',
   },
-  charCount: { fontSize: 11, color: '#64748b', textAlign: 'right' },
-  colorRow: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  colorSwatch: {
-    width: 28, height: 28, borderRadius: '50%', border: '2px solid transparent', cursor: 'pointer',
-    color: '#fff', fontWeight: 900, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'transform 0.15s',
+
+  colorRow: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  swatch: {
+    width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: 'pointer', color: '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)',
   },
-  colorSwatchActive: { border: '2px solid #fff', boxShadow: '0 0 0 2px rgba(56, 189, 248, 0.5)', transform: 'scale(1.1)' },
-  colorPicker: { width: 30, height: 28, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', borderRadius: '50%' },
-  hint: { fontSize: 12, color: '#94a3b8', lineHeight: 1.5 },
-  errorText: { fontSize: 12, color: '#f87171' },
-  selectedTrackWrap: { display: 'flex', alignItems: 'center', gap: 10, background: '#111b2d', padding: 8, borderRadius: 10, border: '1px solid rgba(56, 189, 248, 0.2)' },
-  musicResultsList: {
-    display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4, maxHeight: 220, overflowY: 'auto',
-    border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: 10, padding: 6, background: '#111b2d',
+  swatchActive: { boxShadow: '0 0 0 3px var(--bg-surface), 0 0 0 5px var(--accent)' },
+  customSwatch: {
+    position: 'relative', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer',
+    background: 'conic-gradient(#FF7EB6, #FFC857, #4CD6A0, #3A9BFF, #8B7CFF, #FF7EB6)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
-  musicResultRow: {
-    display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none',
-    borderRadius: 8, padding: 8, cursor: 'pointer', width: '100%', textAlign: 'left',
-    transition: 'background 0.15s',
+  customSwatchDot: { width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--bg-surface)' },
+  hiddenColorInput: { position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' },
+
+  errorBox: {
+    fontSize: 12.5, color: 'var(--danger)', background: 'color-mix(in srgb, var(--danger) 10%, transparent)',
+    borderRadius: 12, padding: '9px 12px',
   },
-  musicResultArt: { width: 36, height: 36, borderRadius: 8, objectFit: 'cover', flexShrink: 0 },
-  musicResultTitle: { fontSize: 13, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  musicResultArtist: { fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  smallGhostBtn: {
-    background: 'rgba(248, 113, 113, 0.1)', border: '1px solid rgba(248, 113, 113, 0.3)', color: '#f87171', borderRadius: 8,
-    padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+
+  // música
+  searchField: {
+    display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-elevated)',
+    borderRadius: 'var(--radius-pill)', padding: '0 16px',
   },
-  connectionList: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 },
-  connectionChip: {
-    display: 'flex', alignItems: 'center', gap: 12, background: '#111b2d', border: '1px solid rgba(56, 189, 248, 0.2)',
-    borderRadius: 10, padding: '10px 14px',
+  searchInput: {
+    flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-hi)',
+    fontSize: 14, padding: '12px 0', fontFamily: 'inherit',
   },
-  connectionIcon: { width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#38bdf8' },
-  connectionMeta: { flex: 1, minWidth: 0 },
-  connectionPlatform: { fontSize: 10.5, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 },
-  connectionValue: { fontSize: 13, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  connectionRemoveBtn: { width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'transparent', color: '#94a3b8', fontSize: 18, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  addConnectionBtn: {
-    width: '100%', background: '#111b2d', border: '1px dashed rgba(56, 189, 248, 0.35)', color: '#38bdf8',
-    borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    transition: 'background 0.2s',
+  trackList: { display: 'flex', flexDirection: 'column', gap: 2, background: 'var(--bg-base)', borderRadius: 18, padding: 6 },
+  trackRow: {
+    display: 'flex', alignItems: 'center', gap: 12, background: 'transparent', border: 'none',
+    borderRadius: 14, padding: 8, cursor: 'pointer', width: '100%',
   },
-  addConnectionForm: { display: 'flex', flexDirection: 'column', gap: 10, background: '#111b2d', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: 10, padding: 12 },
-  platformPickerRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  platformPickerBtn: {
-    width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(56, 189, 248, 0.2)', background: '#0b1320',
-    color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'all 0.15s',
+  trackArt: { width: 42, height: 42, borderRadius: 10, objectFit: 'cover', flexShrink: 0 },
+  trackArtEmpty: { background: 'var(--bg-elevated)', color: 'var(--text-low)', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  trackTitle: { fontSize: 13.5, fontWeight: 600, color: 'var(--text-hi)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  trackArtist: { fontSize: 12, color: 'var(--text-low)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  trackSelected: { display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-base)', borderRadius: 18, padding: 10 },
+  emptyCard: { display: 'flex', gap: 12, background: 'var(--bg-base)', borderRadius: 18, padding: 14 },
+  emptyIcon: {
+    width: 40, height: 40, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  platformPickerBtnActive: { border: '1px solid #38bdf8', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)' },
-  addConnectionActions: { display: 'flex', justifyContent: 'flex-end', gap: 8 },
-  primaryBtnSm: {
-    border: 'none', background: 'linear-gradient(135deg, #38bdf8, #0284c7)', color: '#0b1320',
-    fontWeight: 700, padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5,
+  emptyTitle: { fontSize: 13.5, fontWeight: 650, color: 'var(--text-hi)', marginBottom: 3 },
+  emptyText: { fontSize: 12.5, color: 'var(--text-low)', lineHeight: 1.55 },
+  code: { fontFamily: 'ui-monospace, monospace', fontSize: 11.5, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 6 },
+
+  // conexões
+  platformGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 },
+  platformTile: {
+    display: 'flex', alignItems: 'center', gap: 9, background: 'var(--bg-base)', border: '2px solid transparent',
+    borderRadius: 16, padding: '8px 10px', cursor: 'pointer', textAlign: 'left',
   },
-  footer: {
-    display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 24px', borderTop: '1px solid rgba(56, 189, 248, 0.15)', flexShrink: 0, background: '#080e18',
+  platformTileActive: { borderColor: 'var(--accent)' },
+  platformIcon: {
+    width: 30, height: 30, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  secondaryBtn: { 
-    border: '1px solid rgba(56, 189, 248, 0.25)', background: 'transparent', color: '#94a3b8', 
-    padding: '9px 16px', borderRadius: 10, cursor: 'pointer', fontSize: 13, transition: 'color 0.2s' 
+  platformLabel: { fontSize: 12.5, fontWeight: 600, color: 'var(--text-hi)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  addRow: { display: 'flex', gap: 8, alignItems: 'center' },
+  connList: { display: 'flex', flexDirection: 'column', gap: 6 },
+  connRow: { display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-base)', borderRadius: 16, padding: '8px 8px 8px 10px' },
+  connPlatform: { fontSize: 11.5, color: 'var(--text-low)', fontWeight: 600 },
+  connValue: { fontSize: 13.5, color: 'var(--text-hi)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  iconBtn: {
+    width: 32, height: 32, borderRadius: 16, border: 'none', background: 'transparent', color: 'var(--text-low)',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  primaryBtn: {
-    border: 'none', background: 'linear-gradient(135deg, #38bdf8, #0284c7)', color: '#0b1320',
-    fontWeight: 700, padding: '9px 18px', borderRadius: 10, cursor: 'pointer', fontSize: 13.5,
-    boxShadow: '0 6px 20px rgba(56, 189, 248, 0.35)', transition: 'transform 0.15s, box-shadow 0.15s',
+
+  // prévia
+  previewCol: {
+    width: 340, flexShrink: 0, background: 'var(--bg-base)', borderLeft: '1px solid var(--border)',
+    display: 'flex', flexDirection: 'column', padding: '18px 20px 90px', overflowY: 'auto',
+  },
+  previewHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  previewLabel: { fontSize: 12.5, fontWeight: 650, color: 'var(--text-low)' },
+  closeBtn: {
+    width: 32, height: 32, borderRadius: 16, border: 'none', background: 'var(--bg-elevated)', color: 'var(--text-mid)',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  profileCard: {
+    background: 'var(--bg-surface)', borderRadius: 22, overflow: 'hidden',
+    border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', flexShrink: 0,
+  },
+  profileBanner: { height: 104 },
+  profileAvatarWrap: { position: 'relative', width: 88, height: 88, marginTop: -46, marginLeft: 16 },
+  profileAvatar: {
+    width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', display: 'block',
+    border: '6px solid var(--bg-surface)', boxSizing: 'border-box',
+  },
+  profileStatus: {
+    position: 'absolute', right: 4, bottom: 4, width: 20, height: 20, borderRadius: '50%',
+    background: 'var(--success)', border: '4px solid var(--bg-surface)', boxSizing: 'border-box',
+  },
+  profileBody: { padding: '6px 16px 18px' },
+  profileName: { fontSize: 19, fontWeight: 700, color: 'var(--text-hi)', letterSpacing: -0.2, wordBreak: 'break-word' },
+  profileHandleRow: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 2 },
+  profileHandle: { fontSize: 13, color: 'var(--text-mid)' },
+  profileDivider: { height: 1, background: 'var(--border)', margin: '14px 0' },
+  profileBlock: { marginBottom: 14 },
+  profileBlockTitle: { fontSize: 11.5, fontWeight: 700, color: 'var(--text-low)', marginBottom: 6 },
+  profileBio: { fontSize: 13.5, color: 'var(--text-hi)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+  profileConns: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  profileConn: {
+    display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-hi)',
+    background: 'var(--bg-elevated)', borderRadius: 'var(--radius-pill)', padding: '5px 10px',
+  },
+  profileEmpty: { fontSize: 12.5, color: 'var(--text-low)', lineHeight: 1.5, marginTop: 12 },
+
+  // barra de salvar
+  saveBar: {
+    position: 'absolute', left: 16, right: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 10,
+    background: 'var(--text-hi)', color: 'var(--bg-surface)', borderRadius: 18, padding: '10px 10px 10px 18px',
+    boxShadow: 'var(--shadow-lg)', zIndex: 3,
+  },
+  saveBarText: { flex: 1, fontSize: 13.5, fontWeight: 550 },
+  saveBarReset: {
+    border: 'none', background: 'transparent', color: 'var(--bg-surface)', fontSize: 13, fontWeight: 600,
+    cursor: 'pointer', padding: '9px 12px', opacity: 0.8,
+  },
+  saveBarSave: {
+    border: 'none', background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 13, fontWeight: 650,
+    cursor: 'pointer', padding: '9px 18px', borderRadius: 'var(--radius-pill)',
   },
 };

@@ -21,20 +21,78 @@ export function useVoiceChannel(socket) {
   const [muted, setMuted] = useState(false);
   const [deafened, setDeafened] = useState(false);
   const [error, setError] = useState('');
+  const [screenSharing, setScreenSharing] = useState(false);
+  const [remoteScreenShares, setRemoteScreenShares] = useState(new Map()); // socketId -> MediaStream
 
   const localStreamRef = useRef(null);
+  const localScreenStreamRef = useRef(null);
   const peersRef = useRef(new Map()); // socketId -> RTCPeerConnection
   const audioElsRef = useRef(new Map()); // socketId -> HTMLAudioElement
   const channelIdRef = useRef(null);
   const wasMutedBeforeDeafenRef = useRef(false);
   const outputVolumeRef = useRef(1);
+  const deafenedRef = useRef(false);
   const outputDeviceIdRef = useRef('');
 
-  const createPeerConnection = useCallback((peerSocketId, isInitiator) => {
+  const removeRemoteShare = useCallback((peerSocketId) => {
+    setRemoteScreenShares((prev) => {
+      if (!prev.has(peerSocketId)) return prev;
+      const next = new Map(prev);
+      next.delete(peerSocketId);
+      return next;
+    });
+  }, []);
+
+  // Um <audio> por stream recebido (chave "peer|streamId"): a voz e o som da tela
+  // compartilhada chegam em streams separados — antes o som da tela SUBSTITUÍA a voz.
+  const playRemoteAudio = useCallback((peerSocketId, stream) => {
+    const key = `${peerSocketId}|${stream.id}`;
+    let audioEl = audioElsRef.current.get(key);
+    if (!audioEl) {
+      audioEl = new Audio();
+      audioEl.autoplay = true;
+      audioEl.volume = deafenedRef.current ? 0 : outputVolumeRef.current;
+      if (outputDeviceIdRef.current && typeof audioEl.setSinkId === 'function') {
+        audioEl.setSinkId(outputDeviceIdRef.current).catch(() => {});
+      }
+      audioElsRef.current.set(key, audioEl);
+    }
+    if (audioEl.srcObject !== stream) audioEl.srcObject = stream;
+    const playPromise = audioEl.play();
+    if (playPromise?.catch) {
+      playPromise.catch(() => setError('O áudio da chamada foi bloqueado — clique em qualquer lugar da tela e tente de novo.'));
+    }
+  }, []);
+
+  const dropPeerAudio = useCallback((peerSocketId) => {
+    for (const [key, el] of audioElsRef.current.entries()) {
+      if (key.startsWith(`${peerSocketId}|`)) {
+        el.srcObject = null;
+        audioElsRef.current.delete(key);
+      }
+    }
+  }, []);
+
+  // "Perfect negotiation" (padrão do WebRTC): qualquer lado pode mandar oferta quando
+  // adiciona/remove uma track (ex.: começar a compartilhar a tela). Se as duas ofertas
+  // se cruzarem, o lado "educado" cede e o outro ganha — antes as ofertas duplicadas
+  // quebravam a conexão e o vídeo da tela nunca chegava.
+  const createPeerConnection = useCallback((peerSocketId) => {
+    const existing = peersRef.current.get(peerSocketId);
+    if (existing) return existing;
+
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    pc.__polite = String(socket.id) > String(peerSocketId);
+    pc.__makingOffer = false;
+    pc.__ignoreOffer = false;
+    peersRef.current.set(peerSocketId, pc);
 
     localStreamRef.current?.getTracks().forEach((track) => {
       pc.addTrack(track, localStreamRef.current);
+    });
+    // Se eu já estava compartilhando a tela quando essa pessoa entrou, ela recebe o vídeo também
+    localScreenStreamRef.current?.getTracks().forEach((track) => {
+      pc.addTrack(track, localScreenStreamRef.current);
     });
 
     pc.onicecandidate = (event) => {
@@ -46,12 +104,23 @@ export function useVoiceChannel(socket) {
       }
     };
 
+    pc.onnegotiationneeded = async () => {
+      try {
+        pc.__makingOffer = true;
+        await pc.setLocalDescription();
+        socket.emit('voice:signal', { to: peerSocketId, signal: { type: 'offer', sdp: pc.localDescription } });
+      } catch (e) {
+        console.warn('Falha ao negociar com', peerSocketId, e);
+      } finally {
+        pc.__makingOffer = false;
+      }
+    };
+
     // Sem isso, uma conexão que falha (NAT bloqueado, TURN fora do ar) fica "pendurada"
     // pra sempre sem nenhum aviso — o usuário só via silêncio e achava que tava travado.
     pc.oniceconnectionstatechange = () => {
       if (pc.iceConnectionState === 'failed') {
         setError('Não foi possível conectar com um dos participantes. Verifique sua conexão.');
-        // tenta reiniciar a negociação ICE antes de desistir de vez
         pc.restartIce?.();
       }
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
@@ -60,37 +129,51 @@ export function useVoiceChannel(socket) {
     };
 
     pc.ontrack = (event) => {
-      let audioEl = audioElsRef.current.get(peerSocketId);
-      if (!audioEl) {
-        audioEl = new Audio();
-        audioEl.autoplay = true;
-        audioEl.volume = deafened ? 0 : outputVolumeRef.current;
-        if (outputDeviceIdRef.current && typeof audioEl.setSinkId === 'function') {
-          audioEl.setSinkId(outputDeviceIdRef.current).catch(() => {});
-        }
-        audioElsRef.current.set(peerSocketId, audioEl);
+      const stream = event.streams[0] || new MediaStream([event.track]);
+
+      // Vídeo = compartilhamento de tela de alguém; a UI renderiza num <video>
+      if (event.track.kind === 'video') {
+        setRemoteScreenShares((prev) => new Map(prev).set(peerSocketId, stream));
+        const clear = () => removeRemoteShare(peerSocketId);
+        event.track.onended = clear;
+        stream.onremovetrack = () => {
+          if (stream.getVideoTracks().length === 0) clear();
+        };
+        return;
       }
-      audioEl.srcObject = event.streams[0];
-      // Reforço: mesmo com autoplay=true, alguns navegadores só tocam de fato depois
-      // de um .play() explícito — sem isso, o áudio remoto ficava "mudo" sem erro nenhum.
-      const playPromise = audioEl.play();
-      if (playPromise?.catch) {
-        playPromise.catch(() => setError('O navegador bloqueou o áudio da chamada — clique em qualquer lugar da tela e tente de novo.'));
-      }
+
+      playRemoteAudio(peerSocketId, stream);
     };
 
-    peersRef.current.set(peerSocketId, pc);
-
-    if (isInitiator) {
-      pc.onnegotiationneeded = async () => {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit('voice:signal', { to: peerSocketId, signal: { type: 'offer', sdp: offer } });
-      };
-    }
-
     return pc;
-  }, [socket]);
+  }, [socket, playRemoteAudio, removeRemoteShare]);
+
+  const handleSignal = useCallback(async ({ from, signal }) => {
+    const pc = createPeerConnection(from);
+    try {
+      if (signal.type === 'offer' || signal.type === 'answer') {
+        const description = signal.sdp;
+        const collision = description.type === 'offer'
+          && (pc.__makingOffer || pc.signalingState !== 'stable');
+        pc.__ignoreOffer = !pc.__polite && collision;
+        if (pc.__ignoreOffer) return;
+
+        await pc.setRemoteDescription(description); // rollback implícito se colidiu
+        if (description.type === 'offer') {
+          await pc.setLocalDescription();
+          socket.emit('voice:signal', { to: from, signal: { type: 'answer', sdp: pc.localDescription } });
+        }
+      } else if (signal.type === 'ice-candidate') {
+        try {
+          await pc.addIceCandidate(signal.candidate);
+        } catch (e) {
+          if (!pc.__ignoreOffer) console.warn('ICE candidate rejeitado', e);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro de sinalização com', from, e);
+    }
+  }, [socket, createPeerConnection]);
 
   const join = useCallback(async (channelId, options = {}) => {
     const { inputDeviceId, startMuted = false, outputDeviceId = '', outputVolume = 1 } = options;
@@ -113,7 +196,7 @@ export function useVoiceChannel(socket) {
     }
 
     channelIdRef.current = channelId;
-    outputVolumeRef.current = deafened ? 0 : outputVolume;
+    outputVolumeRef.current = outputVolume;
     outputDeviceIdRef.current = outputDeviceId;
     localStreamRef.current = stream;
     if (startMuted) {
@@ -123,39 +206,26 @@ export function useVoiceChannel(socket) {
 
     socket.on('voice:existing-peers', (peers) => {
       setParticipants(peers.map((p) => ({ socketId: p.socketId, user: p.user })));
-      peers.forEach((p) => createPeerConnection(p.socketId, true));
+      peers.forEach((p) => createPeerConnection(p.socketId));
     });
 
     socket.on('voice:peer-joined', ({ socketId, user }) => {
       setParticipants((prev) => [...prev, { socketId, user }]);
-      createPeerConnection(socketId, false);
+      createPeerConnection(socketId);
       playPeerJoinSound();
     });
 
-    socket.on('voice:signal', async ({ from, signal }) => {
-      let pc = peersRef.current.get(from);
-      if (!pc) pc = createPeerConnection(from, false);
+    socket.on('voice:signal', handleSignal);
 
-      if (signal.type === 'offer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('voice:signal', { to: from, signal: { type: 'answer', sdp: answer } });
-      } else if (signal.type === 'answer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-      } else if (signal.type === 'ice-candidate') {
-        try {
-          await pc.addIceCandidate(signal.candidate);
-        } catch (e) {
-          /* ignora candidatos fora de ordem */
-        }
-      }
+    socket.on('voice:screen-state', ({ socketId, sharing }) => {
+      if (!sharing) removeRemoteShare(socketId);
     });
 
     socket.on('voice:peer-left', ({ socketId }) => {
       peersRef.current.get(socketId)?.close();
       peersRef.current.delete(socketId);
-      audioElsRef.current.delete(socketId);
+      dropPeerAudio(socketId);
+      removeRemoteShare(socketId);
       setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
       playPeerLeaveSound();
     });
@@ -164,7 +234,7 @@ export function useVoiceChannel(socket) {
     setConnected(true);
     setConnecting(false);
     playJoinSound();
-  }, [socket, createPeerConnection, deafened]);
+  }, [socket, createPeerConnection, handleSignal, removeRemoteShare, dropPeerAudio, deafened]);
 
   const leave = useCallback(() => {
     socket.emit('voice:leave');
@@ -172,9 +242,16 @@ export function useVoiceChannel(socket) {
     socket.off('voice:peer-joined');
     socket.off('voice:signal');
     socket.off('voice:peer-left');
+    socket.off('voice:screen-state');
+
+    localScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localScreenStreamRef.current = null;
+    setScreenSharing(false);
+    setRemoteScreenShares(new Map());
 
     peersRef.current.forEach((pc) => pc.close());
     peersRef.current.clear();
+    audioElsRef.current.forEach((el) => { el.srcObject = null; });
     audioElsRef.current.clear();
 
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -184,10 +261,78 @@ export function useVoiceChannel(socket) {
     setConnecting(false);
     setParticipants([]);
     setDeafened(false);
+    deafenedRef.current = false;
     setError('');
     channelIdRef.current = null;
     playLeaveSound();
   }, [socket]);
+
+  const stopScreenShareRef = useRef(null);
+
+  // Lista telas/janelas pro seletor (só existe no app desktop; no navegador retorna null
+  // e o próprio navegador mostra o seletor dele).
+  const getScreenSources = useCallback(async () => {
+    if (!window.safecord?.getScreenSources) return null;
+    return window.safecord.getScreenSources();
+  }, []);
+
+  // Pede a tela (ou uma janela) e manda o vídeo pra todo mundo na call — WebRTC de
+  // verdade, na mesma malha usada pelo áudio. sourceId vem do seletor no app desktop.
+  const startScreenShare = useCallback(async (sourceId) => {
+    if (!localStreamRef.current) {
+      setError('Entre em um canal de voz antes de compartilhar a tela.');
+      throw new Error('not-in-call');
+    }
+    if (localScreenStreamRef.current) return;
+
+    let stream;
+    try {
+      if (sourceId && window.safecord?.selectScreenSource) {
+        await window.safecord.selectScreenSource(sourceId);
+      }
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30, max: 30 } },
+        audio: true, // som do sistema quando o SO permite (Windows)
+      });
+    } catch (err) {
+      if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') return; // cancelou
+      setError('Não foi possível iniciar o compartilhamento de tela.');
+      throw err;
+    }
+
+    const [videoTrack] = stream.getVideoTracks();
+    if (videoTrack && 'contentHint' in videoTrack) videoTrack.contentHint = 'detail';
+
+    localScreenStreamRef.current = stream;
+    setScreenSharing(true);
+    setError('');
+    // "Parar de compartilhar" na barra nativa do SO também encerra aqui
+    if (videoTrack) videoTrack.onended = () => stopScreenShareRef.current?.();
+
+    // addTrack dispara onnegotiationneeded em cada conexão → a oferta sai sozinha
+    peersRef.current.forEach((pc) => {
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    });
+    socket.emit('voice:screen-state', { sharing: true });
+  }, [socket]);
+
+  const stopScreenShare = useCallback(() => {
+    const stream = localScreenStreamRef.current;
+    if (!stream) return;
+
+    peersRef.current.forEach((pc) => {
+      pc.getSenders()
+        .filter((sender) => sender.track && stream.getTracks().includes(sender.track))
+        .forEach((sender) => pc.removeTrack(sender));
+    });
+
+    stream.getTracks().forEach((t) => t.stop());
+    localScreenStreamRef.current = null;
+    setScreenSharing(false);
+    socket.emit('voice:screen-state', { sharing: false });
+  }, [socket]);
+
+  stopScreenShareRef.current = stopScreenShare;
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
@@ -203,6 +348,7 @@ export function useVoiceChannel(socket) {
   const toggleDeafen = useCallback(() => {
     const newDeafened = !deafened;
     setDeafened(newDeafened);
+    deafenedRef.current = newDeafened;
     if (newDeafened) playDeafenSound(); else playUndeafenSound();
 
     audioElsRef.current.forEach((audioEl) => {
@@ -252,6 +398,12 @@ export function useVoiceChannel(socket) {
     toggleDeafen,
     setOutputVolume,
     setOutputDevice,
+    screenSharing,
+    remoteScreenShares,
+    startScreenShare,
+    stopScreenShare,
+    getScreenSources,
+    localScreenStream: screenSharing ? localScreenStreamRef.current : null,
     channelId: channelIdRef.current,
   };
 }

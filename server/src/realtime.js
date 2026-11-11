@@ -8,6 +8,42 @@ const voiceRooms = new Map();
 const socketUser = new Map(); // socketId -> user info
 const userSockets = new Map(); // userId -> Set<socketId>  — pra mandar evento pra um usuário específico (ex: pedido de amizade)
 
+// Só aceita o que esperamos de um anexo. O arquivo já subiu por REST antes da mensagem;
+// aqui é só repassar os metadados, nunca confiar cegamente no que o cliente mandou.
+function sanitizeAttachments(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((a) => a && typeof a.url === 'string' && a.url.startsWith('/uploads/'))
+    .slice(0, 6) // no máximo 6 arquivos por mensagem
+    .map((a) => ({
+      url: a.url,
+      name: typeof a.name === 'string' ? a.name.slice(0, 200) : 'arquivo',
+      size: typeof a.size === 'number' ? a.size : null,
+      width: typeof a.width === 'number' ? a.width : null,
+      height: typeof a.height === 'number' ? a.height : null,
+      type: typeof a.type === 'string' ? a.type : 'image/webp',
+    }));
+}
+
+/** Quem participa de uma conversa (1:1 ou grupo). */
+const badgesOfStmt = db.prepare(
+  `SELECT b.id, b.name, b.description, b.icon, b.color
+   FROM user_badges ub JOIN badges b ON b.id = ub.badge_id
+   WHERE ub.user_id = ? ORDER BY b.position ASC`
+);
+
+/** Insígnias do autor, pra aparecerem ao lado do nome na mensagem. */
+function badgesOf(userId) {
+  try { return badgesOfStmt.all(userId); } catch { return []; }
+}
+
+function conversationMemberIds(conversation) {
+  const rows = db.prepare('SELECT user_id FROM dm_participants WHERE conversation_id = ?').all(conversation.id);
+  if (rows.length > 0) return rows.map((r) => r.user_id);
+  // Conversas antigas, criadas antes da tabela de participantes
+  return [conversation.user_a, conversation.user_b].filter(Boolean);
+}
+
 
 /**
  * Emite um evento pra todas as conexões abertas de um usuário (ele pode estar
@@ -30,6 +66,7 @@ function attachRealtime(io) {
     socketUser.set(socket.id, socket.user);
     if (!userSockets.has(socket.user.id)) userSockets.set(socket.user.id, new Set());
     userSockets.get(socket.user.id).add(socket.id);
+    socket.join(`user:${socket.user.id}`); // permite avisar essa pessoa de qualquer lugar do servidor
 
     db.prepare('UPDATE users SET status = ? WHERE id = ?').run('online', socket.user.id);
     // Respeita o status escolhido (ausente/não incomodar/invisível) mesmo ao reconectar —
@@ -47,13 +84,16 @@ function attachRealtime(io) {
       socket.leave(`channel:${channelId}`);
     });
 
-    socket.on('message:send', ({ channelId, content }) => {
-      if (!content || !content.trim() || !channelId) return;
+    socket.on('message:send', ({ channelId, content, attachments }) => {
+      const trimmed = (content || '').trim().slice(0, 4000);
+      const safeAttachments = sanitizeAttachments(attachments);
+      if ((!trimmed && safeAttachments.length === 0) || !channelId) return;
+
       const id = uuidv4();
       const created_at = Date.now();
       db.prepare(
-        'INSERT INTO messages (id, channel_id, author_id, content, created_at) VALUES (?, ?, ?, ?, ?)'
-      ).run(id, channelId, socket.user.id, content.trim().slice(0, 4000), created_at);
+        'INSERT INTO messages (id, channel_id, author_id, content, created_at, attachments) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(id, channelId, socket.user.id, trimmed, created_at, JSON.stringify(safeAttachments));
 
       const author = db
         .prepare('SELECT username, tag, avatar_color, avatar_url, banner_url, bio, display_name FROM users WHERE id = ?')
@@ -62,7 +102,8 @@ function attachRealtime(io) {
       io.to(`channel:${channelId}`).emit('message:new', {
         id,
         channelId,
-        content: content.trim().slice(0, 4000),
+        content: trimmed,
+        attachments: safeAttachments,
         created_at,
         author_id: socket.user.id,
         username: author.username,
@@ -72,6 +113,7 @@ function attachRealtime(io) {
         banner_url: author.banner_url,
         bio: author.bio,
         display_name: author.display_name,
+        badges: badgesOf(socket.user.id),
       });
     });
 
@@ -83,19 +125,22 @@ function attachRealtime(io) {
     });
 
     // ---- Mensagens diretas (DM) ----
-    socket.on('dm:send', ({ conversationId, content }) => {
-      if (!content || !content.trim() || !conversationId) return;
+    socket.on('dm:send', ({ conversationId, content, attachments }) => {
+      const trimmed = (content || '').trim().slice(0, 4000);
+      const safeAttachments = sanitizeAttachments(attachments);
+      if ((!trimmed && safeAttachments.length === 0) || !conversationId) return;
 
       const conversation = db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(conversationId);
       if (!conversation) return;
-      if (conversation.user_a !== socket.user.id && conversation.user_b !== socket.user.id) return; // não é participante
+
+      const memberIds = conversationMemberIds(conversation);
+      if (!memberIds.includes(socket.user.id)) return; // não é participante
 
       const id = uuidv4();
       const created_at = Date.now();
-      const trimmed = content.trim().slice(0, 4000);
       db.prepare(
-        'INSERT INTO dm_messages (id, conversation_id, author_id, content, created_at) VALUES (?, ?, ?, ?, ?)'
-      ).run(id, conversationId, socket.user.id, trimmed, created_at);
+        'INSERT INTO dm_messages (id, conversation_id, author_id, content, created_at, attachments) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(id, conversationId, socket.user.id, trimmed, created_at, JSON.stringify(safeAttachments));
 
       const author = db
         .prepare('SELECT username, tag, avatar_color, avatar_url, banner_url, bio, display_name FROM users WHERE id = ?')
@@ -105,6 +150,7 @@ function attachRealtime(io) {
         id,
         conversationId,
         content: trimmed,
+        attachments: safeAttachments,
         created_at,
         author_id: socket.user.id,
         username: author.username,
@@ -114,11 +160,11 @@ function attachRealtime(io) {
         banner_url: author.banner_url,
         bio: author.bio,
         display_name: author.display_name,
+        badges: badgesOf(socket.user.id),
       };
 
-      // Manda pro remetente e pro outro participante, mesmo que ele não tenha aberto a conversa ainda
-      const otherId = conversation.user_a === socket.user.id ? conversation.user_b : conversation.user_a;
-      [socket.user.id, otherId].forEach((uid) => {
+      // Manda pra todo mundo da conversa (1:1 ou grupo), mesmo quem ainda não abriu
+      memberIds.forEach((uid) => {
         userSockets.get(uid)?.forEach((sid) => io.to(sid).emit('dm:new', payload));
       });
     });
@@ -126,10 +172,13 @@ function attachRealtime(io) {
     socket.on('dm:typing', ({ conversationId }) => {
       const conversation = db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(conversationId);
       if (!conversation) return;
-      const otherId = conversation.user_a === socket.user.id ? conversation.user_b : conversation.user_a;
-      userSockets.get(otherId)?.forEach((sid) =>
-        io.to(sid).emit('dm:typing', { conversationId, username: socket.user.username })
-      );
+      conversationMemberIds(conversation)
+        .filter((uid) => uid !== socket.user.id)
+        .forEach((uid) => {
+          userSockets.get(uid)?.forEach((sid) =>
+            io.to(sid).emit('dm:typing', { conversationId, username: socket.user.username })
+          );
+        });
     });
 
     // ---- Sinalização WebRTC para canais de voz (topologia mesh) ----
@@ -175,6 +224,15 @@ function attachRealtime(io) {
       io.to(to).emit('voice:signal', { from: socket.id, signal, user: socket.user });
     });
 
+    // Quem compartilha avisa a sala quando começa/para — sem isso, quem estava assistindo
+    // ficava com o vídeo congelado na tela depois que a pessoa parava de compartilhar.
+    socket.on('voice:screen-state', ({ sharing } = {}) => {
+      const channelId = socket.data.voiceChannel;
+      if (!channelId) return;
+      socket.data.screenSharing = Boolean(sharing);
+      socket.to(`voice:${channelId}`).emit('voice:screen-state', { socketId: socket.id, sharing: Boolean(sharing) });
+    });
+
     socket.on('voice:leave', () => leaveVoice(socket, io));
 
     socket.on('disconnect', () => {
@@ -211,6 +269,7 @@ function leaveVoice(socket, io) {
   }
   socket.leave(`voice:${channelId}`);
   socket.data.voiceChannel = null;
+  socket.data.screenSharing = false;
   broadcastVoicePresence(io, channelId);
 }
 

@@ -1,44 +1,74 @@
 :root {
-  --bg-void: #0A0D11;
-  --bg-base: #10151B;
-  --bg-surface: #1A2029;
-  --bg-elevated: #212834;
-  --bg-hover: #2A3341;
+  /* SafeCord — azul claro + branco. Duas versões das superfícies:
+     escuro azulado (padrão do :root) e claro ([data-mode="light"]).
+     A cor de destaque (--accent…) vem do tema escolhido e vale pros dois modos. */
+  --bg-void: #08101C;      /* moldura do app (atrás dos painéis) */
+  --bg-base: #0E1828;      /* painéis laterais */
+  --bg-surface: #122036;   /* painel principal / modais */
+  --bg-elevated: #1A2A42;  /* campos, cartões */
+  --bg-hover: #223554;
 
-  /* Identidade do SafeCord: teal "verificado" como cor de ação primária,
-     violeta como par de gradiente — deliberadamente longe do azul-arroxeado
-     genérico de clone de chat. */
-  --accent: #22C4E8;
-  --accent-dim: #1AA3C2;
-  --accent-glow: rgba(34, 196, 232, 0.32);
-  --accent-secondary: #7FE8FF;
-  --accent-secondary-dim: #22C4E8;
-  --accent-gradient: linear-gradient(135deg, #22C4E8, #7FE8FF);
-  --accent-ambient: rgba(34, 196, 232, 0.07);
-  --accent-secondary-ambient: rgba(127, 232, 255, 0.06);
-  --accent-contrast: #06222B;
+  --accent: #3A9BFF;
+  --accent-dim: #2D79C7;
+  --accent-glow: rgba(58, 155, 255, 0.32);
+  --accent-secondary: #C9E5FF;
+  --accent-secondary-dim: #9DB3C7;
+  --accent-gradient: linear-gradient(135deg, #3A9BFF, #C9E5FF);
+  --accent-soft: rgba(58, 155, 255, 0.18);
+  --accent-softer: rgba(58, 155, 255, 0.10);
+  --accent-ambient: rgba(58, 155, 255, 0.07);
+  --accent-secondary-ambient: rgba(201, 229, 255, 0.06);
+  --accent-contrast: #FFFFFF;
 
   --warn: #F0B429;
-  --danger: #F0654F;
-  --success: #34D399;
+  --danger: #F2555A;
+  --success: #34C77B;
 
-  --text-hi: #F3F5F8;
-  --text-mid: #B8C0CC;
-  --text-low: #7E8999;
+  --text-hi: #F2F7FF;
+  --text-mid: #B5C4DA;
+  --text-low: #7C8FAB;
+  --on-color: #0A1424;     /* texto em cima de avatares/cores vivas */
+  --mono-icon-filter: brightness(0) invert(1); /* deixa ícones PNG monocromáticos na cor do texto */
 
-  --border: #262E3B;
-  --radius-sm: 10px;
+  --border: #1F3049;
+  --scrim: rgba(3, 8, 16, 0.62);
+  --radius-sm: 12px;
   --radius-md: 16px;
-  --radius-lg: 24px;
-  --radius-xl: 32px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+  --panel-gap: 8px;
 
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.28);
   --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.38);
   --shadow-lg: 0 28px 70px rgba(0, 0, 0, 0.55);
-  --shadow-glow: 0 0 26px var(--accent-glow);
+  --shadow-glow: 0 0 0 transparent;
 
-  --font-display: 'Segoe UI Semibold', 'Inter', sans-serif;
-  --font-body: 'Segoe UI', 'Inter', sans-serif;
+  --font-display: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+:root[data-mode="light"] {
+  --bg-void: #DCEAFB;      /* moldura azul-clarinha */
+  --bg-base: #F1F7FE;      /* painéis laterais: branco azulado */
+  --bg-surface: #FFFFFF;   /* painel principal: branco */
+  --bg-elevated: #E9F2FD;
+  --bg-hover: #DCE9FA;
+
+  --text-hi: #0E1B2E;
+  --text-mid: #41546F;
+  --text-low: #71849F;
+  --mono-icon-filter: brightness(0) invert(0.12);
+
+  --border: #D3E2F4;
+  --scrim: rgba(20, 45, 80, 0.32);
+  --danger: #E0434A;
+  --success: #1FA463;
+  --warn: #C98A00;
+
+  --shadow-sm: 0 2px 8px rgba(30, 70, 130, 0.08);
+  --shadow-md: 0 10px 28px rgba(30, 70, 130, 0.12);
+  --shadow-lg: 0 24px 60px rgba(30, 70, 130, 0.18);
 }
 
 * { box-sizing: border-box; }
@@ -49,18 +79,12 @@ html, body, #root {
 }
 
 body {
-  /* Textura sutil no fundo — evita o "chapado" de painel liso que denuncia mockup.
-     Usa a cor do tema ativo, então trocar de tema muda o clima do app inteiro,
-     não só os botões. */
-  background:
-    radial-gradient(ellipse 900px 500px at 15% -10%, var(--accent-ambient), transparent 60%),
-    radial-gradient(ellipse 800px 600px at 100% 110%, var(--accent-secondary-ambient), transparent 55%),
-    var(--bg-void);
+  background: var(--bg-void);
   color: var(--text-hi);
   font-family: var(--font-body);
+  font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
-  transition: background 0.4s ease;
 }
 
 button, input {
@@ -73,13 +97,13 @@ button {
 
 ::selection {
   background: var(--accent);
-  color: #06222b;
+  color: var(--accent-contrast);
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
 
 button:focus-visible,
 input:focus-visible,

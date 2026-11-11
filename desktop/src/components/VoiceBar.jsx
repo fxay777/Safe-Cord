@@ -1,7 +1,12 @@
 import React from 'react';
-import { SpeakerIcon, MicIcon } from './Icons';
+import { SpeakerIcon, MicIcon, ScreenShareIcon, StopShareIcon } from './Icons';
 
-export default function VoiceBar({ channelName, participants, muted, error, onToggleMute, onLeave, myUsername }) {
+export default function VoiceBar({
+  channelName, participants, muted, error, onToggleMute, onLeave, myUsername,
+  screenSharing, onToggleScreenShare, remoteScreenShares, onViewScreenShare,
+}) {
+  const sharingPeers = (participants || []).filter((p) => remoteScreenShares?.has(p.socketId));
+
   return (
     <div style={styles.wrap}>
       <div style={styles.info}>
@@ -15,15 +20,36 @@ export default function VoiceBar({ channelName, participants, muted, error, onTo
       {error && <div style={styles.errorLine}>{error}</div>}
 
       <div style={styles.participants}>
-        <Chip name={myUsername} muted={muted} you />
+        <Chip name={myUsername} muted={muted} you sharing={screenSharing} />
         {participants.map((p) => (
-          <Chip key={p.socketId} name={p.user?.username || '...'} />
+          <Chip
+            key={p.socketId}
+            name={p.user?.username || '...'}
+            sharing={remoteScreenShares?.has(p.socketId)}
+            onClickShare={() => onViewScreenShare?.(p.socketId)}
+          />
         ))}
       </div>
+
+      {sharingPeers.length > 0 && (
+        <div style={styles.shareHint}>
+          <ScreenShareIcon size={13} style={{ flexShrink: 0 }} /> {sharingPeers.map((p) => p.user?.username).join(', ')} compartilhando —
+          <button style={styles.shareHintBtn} onClick={() => onViewScreenShare?.(sharingPeers[0].socketId)}>
+            assistir
+          </button>
+        </div>
+      )}
 
       <div style={styles.actions}>
         <button style={styles.btn(muted)} onClick={onToggleMute} title={muted ? 'Ativar microfone' : 'Mutar microfone'}>
           <MicIcon size={15} muted={muted} />
+        </button>
+        <button
+          style={styles.shareBtn(screenSharing)}
+          onClick={onToggleScreenShare}
+          title={screenSharing ? 'Parar de compartilhar' : 'Compartilhar tela'}
+        >
+          {screenSharing ? <StopShareIcon size={15} /> : <ScreenShareIcon size={15} />}
         </button>
         <button style={styles.leaveBtn} onClick={onLeave}>
           Sair
@@ -33,13 +59,17 @@ export default function VoiceBar({ channelName, participants, muted, error, onTo
   );
 }
 
-function Chip({ name, muted, you }) {
+function Chip({ name, muted, you, sharing, onClickShare }) {
   return (
-    <div style={styles.chip}>
+    <div
+      style={{ ...styles.chip, ...(sharing ? styles.chipSharing : {}) }}
+      onClick={sharing && !you ? onClickShare : undefined}
+    >
       <span style={styles.chipDot} />
       {name}
       {you ? ' (você)' : ''}
       {muted && <MicIcon size={11} muted style={{ marginLeft: 3 }} />}
+      {sharing && <ScreenShareIcon size={12} style={{ marginLeft: 4, color: 'var(--accent)' }} />}
     </div>
   );
 }
@@ -47,8 +77,9 @@ function Chip({ name, muted, you }) {
 const styles = {
   wrap: {
     background: 'var(--bg-elevated)',
-    borderTop: '1px solid var(--border)',
-    padding: '10px 12px',
+    margin: '0 8px 8px',
+    borderRadius: 20,
+    padding: '12px 12px 10px',
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
@@ -70,14 +101,30 @@ const styles = {
     color: 'var(--text-mid)',
   },
   chipDot: { width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' },
+  chipSharing: { background: 'color-mix(in srgb, var(--accent) 18%, transparent)', color: 'var(--text-hi)', cursor: 'pointer' },
+  shareHint: {
+    fontSize: 11.5, color: 'var(--text-mid)', background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
+    borderRadius: 12, padding: '6px 9px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+  },
+  shareHintBtn: {
+    background: 'transparent', border: 'none', color: 'var(--accent)',
+    fontWeight: 700, cursor: 'pointer', fontSize: 11.5, padding: 0,
+  },
+  shareBtn: (active) => ({
+    flex: 1,
+    background: active ? 'var(--accent)' : 'var(--bg-hover)',
+    color: active ? 'var(--accent-contrast)' : 'var(--text-hi)',
+    border: 'none', borderRadius: 'var(--radius-pill)', padding: '8px 0', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+  }),
   actions: { display: 'flex', gap: 8 },
   btn: (active) => ({
     flex: 1,
     background: active ? 'var(--danger)' : 'var(--bg-hover)',
     color: active ? '#fff' : 'var(--text-hi)',
     border: 'none',
-    borderRadius: 12,
-    padding: '7px 0',
+    borderRadius: 'var(--radius-pill)',
+    padding: '8px 0',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
@@ -85,11 +132,11 @@ const styles = {
   }),
   leaveBtn: {
     flex: 1,
-    background: 'transparent',
-    border: '1px solid var(--danger)',
-    color: 'var(--danger)',
-    borderRadius: 12,
-    padding: '7px 0',
+    background: 'var(--danger)',
+    border: 'none',
+    color: '#fff',
+    borderRadius: 'var(--radius-pill)',
+    padding: '8px 0',
     cursor: 'pointer',
     fontSize: 12.5,
     fontWeight: 600,

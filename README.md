@@ -1,27 +1,32 @@
 # 🛡️ SafeCord
 
-Clone funcional do Discord, do zero: **servidores**, **canais de texto**, **chat em tempo real**, **canais de voz (WebRTC)** e presença online/offline. Monorepo com backend + cliente desktop (Electron) + cliente mobile (Expo/React Native).
+Um app de chat estilo Discord, feito do zero: servidores com canais de texto e voz,
+conversas diretas e em grupo, chamadas com compartilhamento de tela, verificação de
+email, nicks com `#0000`, insígnias e loja.
 
 ```
 safecord/
-├── server/     → API REST + WebSocket (Node.js, Express, Socket.io, SQLite)
+├── server/     → API REST + WebSocket (Node, Express, Socket.io, SQLite)
 ├── desktop/    → App de PC (Electron + React + Vite)
 └── mobile/     → App de celular (Expo / React Native)
 ```
 
-## Como rodar
+## Rodando
 
-### 1. Backend (obrigatório para tudo funcionar)
+### 1. Backend (precisa estar rodando pra qualquer coisa funcionar)
 
 ```bash
 cd server
 npm install
+cp .env.example .env     # opcional, mas recomendado
 npm run dev
 ```
 
-Sobe em `http://localhost:4000`. Usa SQLite (arquivo `server/safecord.db`, criado automaticamente) — **não precisa instalar banco de dados nenhum**.
+Sobe em `http://localhost:4000` e usa SQLite (arquivo criado sozinho) — **não precisa
+instalar banco de dados nenhum**. Ao iniciar, ele diz no console se email e pagamentos
+estão configurados.
 
-### 2. Desktop (Electron)
+### 2. Desktop
 
 ```bash
 cd desktop
@@ -29,49 +34,70 @@ npm install
 npm run dev
 ```
 
-Abre uma janela nativa de PC com o app rodando (Windows, Mac ou Linux). Para gerar o instalador (.exe/.dmg/.AppImage), veja a seção "Build para produção" abaixo.
-
-### 3. Mobile (Expo)
+### 3. Mobile
 
 ```bash
 cd mobile
 npm install
-npx expo install react-native-webrtc @config-plugins/react-native-webrtc
 npm start
 ```
 
-Escaneie o QR code com o app **Expo Go** (Android/iOS) ou rode num emulador.
+> No emulador Android troque `localhost` por `10.0.2.2` em `mobile/src/api.js`.
+> Num celular físico, use o IP da sua máquina na rede (ex: `192.168.0.15`).
 
-> ⚠️ **Importante sobre o endereço do servidor:**
-> - No app desktop e no simulador iOS: `http://localhost:4000` funciona direto.
-> - No emulador Android: troque para `http://10.0.2.2:4000` em `mobile/src/api.js`.
-> - Num celular físico: troque para o IP local do seu PC (ex: `http://192.168.0.15:4000`) em `desktop/src/api.js` e `mobile/src/api.js`, e libere a porta 4000 no firewall.
+## O que tem pronto
 
-## O que já funciona
+**Contas e perfil**
+- Cadastro com **email + verificação por código de 6 dígitos**
+- **Nicks estilo Discord**: dois "joao" podem existir, o que identifica é `joao#1234`
+- Login por nome, por `nome#0000` ou por email
+- Perfil com apelido, bio, foto, banner, cor, status (online/ausente/não perturbe/invisível),
+  música do Spotify e contas conectadas
+- **Insígnias** no perfil e ao lado do nome nas mensagens
 
-- ✅ Cadastro e login (senha com hash bcrypt, sessão via JWT)
-- ✅ Criar servidor (gera automaticamente canal `#geral` e uma `Sala de Voz`)
-- ✅ Entrar em servidor por código de convite
-- ✅ Múltiplos canais de texto por servidor
-- ✅ Chat em tempo real (Socket.io), com histórico persistido em banco
-- ✅ Indicador de "digitando..."
-- ✅ Lista de membros com status online/offline em tempo real
-- ✅ Canais de voz com WebRTC (áudio, topologia mesh — ótima até uns 6-8 pessoas por sala)
-- ✅ Mesma identidade visual (tema escuro + acento teal) no desktop e no mobile
+**Conversas**
+- Servidores com categorias, canais de texto e voz, cargos e permissões
+- **Conversas diretas e em grupo** (até 10 pessoas, com nome e avatar em mosaico)
+- **Anexar imagem e vídeo** (otimizados no servidor), **emoji picker**, "digitando…",
+  contador de não lidas
 
-## O que ainda não tem (próximos passos naturais)
+**Voz e vídeo**
+- Canais de voz por WebRTC (malha), com mudo, ensurdecer, escolha de microfone/saída,
+  controle de volume e sons de entrar/sair
+- **Compartilhamento de tela de verdade** (`getDisplayMedia`), com aviso de quem está
+  compartilhando e player pra assistir
+- Servidores STUN + TURN de reserva, pra funcionar em redes mais fechadas
 
-- Vídeo/compartilhamento de tela (dá pra estender o `useVoiceChannel` pra adicionar `video: true`)
-- Permissões/cargos (admin, moderador, etc.) — hoje todo mundo no servidor tem os mesmos poderes
-- Upload de imagens/arquivos no chat
-- Notificações push no mobile
-- Editar/apagar mensagens
-- Emojis/reações
+**Loja**
+- SafeCord Pro e insígnias compráveis, via **Stripe Checkout** (modo teste)
 
-## Build para produção
+## Configuração opcional (`server/.env`)
 
-**Desktop:** adicione `electron-builder` (`npm i -D electron-builder`) e configure o `build` no `package.json` do `desktop/` pra gerar instaladores nativos.
+Tudo abaixo é opcional — sem nada configurado o app funciona, só com essas partes em
+modo de desenvolvimento. O `.env.example` tem o passo a passo de cada uma.
 
-**Mobile:** use `eas build` (Expo Application Services) pra gerar o `.apk`/`.ipa` final.
+| Variável | Pra quê | Sem ela |
+|---|---|---|
+| `SMTP_*` | Enviar o email de verificação | O código aparece no console do servidor **e já vem preenchido na tela** |
+| `STRIPE_SECRET_KEY` | Pagamentos de verdade (use a `sk_test_`) | A loja aparece, mas comprar avisa que falta configurar |
+| `SPOTIFY_*` | Busca de música no perfil | Só essa busca fica indisponível |
+| `JWT_SECRET` | Assinar os tokens de login | Usa um valor padrão — **troque antes de colocar no ar** |
 
-**Backend:** troque o `JWT_SECRET` (veja `server/src/auth.js`) por uma variável de ambiente forte antes de colocar em produção, e troque o SQLite por Postgres se esperar mais tráfego.
+No modo de teste do Stripe, use o cartão `4242 4242 4242 4242`, qualquer validade futura
+e CVC `123`. Nada é cobrado de verdade.
+
+## Antes de colocar no ar
+
+1. Troque o `JWT_SECRET` por um valor aleatório e forte
+2. Configure SMTP (senão ninguém consegue verificar o email de verdade)
+3. Troque a chave do Stripe de `sk_test_` pra `sk_live_` e configure o webhook
+4. Troque o SQLite por Postgres se esperar bastante gente
+5. Publique o backend em algum host e aponte `API_URL` (em `desktop/src/api.js` e
+   `mobile/src/api.js`) pra ele
+
+## Próximos passos possíveis
+
+- Chamada de vídeo com câmera (a base de WebRTC já está pronta, falta a track de vídeo da webcam)
+- Anexos no mobile (hoje só o desktop)
+- Notificações push
+- Editar e apagar mensagens, reações com emoji

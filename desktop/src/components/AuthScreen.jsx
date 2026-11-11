@@ -48,24 +48,14 @@ export default function AuthScreen({ onAuth, onCancel }) {
     }
 
     if (mode === 'register') {
-      if (contactType === 'email') {
-        if (!email.trim()) {
-          return 'Digite seu e-mail.';
-        }
-
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-        if (!emailRegex.test(email)) {
-          return 'Digite um e-mail válido.';
-        }
+      if (!email.trim()) {
+        return 'Digite seu e-mail.';
       }
 
-      if (contactType === 'phone') {
-        const numbers = phone.replace(/\D/g, '');
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-        if (numbers.length !== 10 && numbers.length !== 11) {
-          return 'Digite um telefone válido com DDD.';
-        }
+      if (!emailRegex.test(email)) {
+        return 'Digite um e-mail válido.';
       }
     }
 
@@ -99,16 +89,13 @@ export default function AuthScreen({ onAuth, onCancel }) {
       };
 
       if (mode === 'register') {
-        if (contactType === 'email') {
-          payload.email = email.trim();
-        } else {
-          payload.phone = phone.replace(/\D/g, '');
-        }
+        payload.email = email.trim();
       }
 
       const { data } = await api.post(path, payload);
 
-      onAuth(data.token, data.user);
+      // No cadastro vem também o estado da verificação (e, sem SMTP, o código de dev)
+      onAuth(data.token, data.user, data.verification);
     } catch (err) {
       setError(
         err.response?.data?.error ||
@@ -127,15 +114,11 @@ export default function AuthScreen({ onAuth, onCancel }) {
 
   return (
     <div style={styles.page}>
-      <div style={styles.backgroundGlowOne} />
-      <div style={styles.backgroundGlowTwo} />
 
       <div style={styles.container}>
         {/* LOGO */}
         <div style={styles.logoArea}>
-          <div style={styles.logo}>
-            <SafeCordMark size={28} />
-          </div>
+          <SafeCordMark size={64} />
 
           <div>
             <div style={styles.brandName}>SafeCord</div>
@@ -178,7 +161,7 @@ export default function AuthScreen({ onAuth, onCancel }) {
                   style={styles.input}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="seuusuario"
+                  placeholder={mode === 'login' ? "usuario, usuario#0000 ou email" : "seuusuario"}
                   autoComplete="username"
                   autoFocus
                 />
@@ -188,46 +171,13 @@ export default function AuthScreen({ onAuth, onCancel }) {
             {/* CADASTRO */}
             {mode === 'register' && (
               <div style={styles.contactSection}>
-                <label style={styles.label}>Como podemos te encontrar?</label>
+                <label style={styles.label}>Seu e-mail</label>
 
-                <div style={styles.tabs}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setContactType('email');
-                      setError('');
-                    }}
-                    style={{
-                      ...styles.tab,
-                      ...(contactType === 'email'
-                        ? styles.tabActive
-                        : {}),
-                    }}
-                  >
-                    <span><MailIcon size={13} /></span>
-                    E-mail
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setContactType('phone');
-                      setError('');
-                    }}
-                    style={{
-                      ...styles.tab,
-                      ...(contactType === 'phone'
-                        ? styles.tabActive
-                        : {}),
-                    }}
-                  >
-                    <span><PhoneIcon size={13} /></span>
-                    Telefone
-                  </button>
+                <div style={styles.verifyNote}>
+                  <MailIcon size={13} /> Mandamos um código pra confirmar que o email é seu.
                 </div>
 
-                {contactType === 'email' ? (
-                  <div style={styles.inputWrapper}>
+                <div style={styles.inputWrapper}>
                     <span style={styles.inputIcon}><MailIcon size={14} /></span>
 
                     <input
@@ -239,21 +189,6 @@ export default function AuthScreen({ onAuth, onCancel }) {
                       autoComplete="email"
                     />
                   </div>
-                ) : (
-                  <div style={styles.inputWrapper}>
-                    <span style={styles.inputIcon}><PhoneIcon size={14} /></span>
-
-                    <input
-                      style={styles.input}
-                      type="tel"
-                      value={phone}
-                      onChange={handlePhoneChange}
-                      placeholder="(54) 99999-9999"
-                      autoComplete="tel"
-                      maxLength={15}
-                    />
-                  </div>
-                )}
               </div>
             )}
 
@@ -373,101 +308,48 @@ const styles = {
     justifyContent: 'center',
     position: 'relative',
     overflow: 'hidden',
-    background: `
-      radial-gradient(
-        circle at 20% 20%,
-        rgba(45, 212, 191, 0.12),
-        transparent 30%
-      ),
-      radial-gradient(
-        circle at 80% 80%,
-        rgba(99, 102, 241, 0.10),
-        transparent 30%
-      ),
-      var(--bg-void)
-    `,
+    background: 'var(--bg-void)',
     padding: '40px 20px',
     boxSizing: 'border-box',
   },
 
-  backgroundGlowOne: {
-    position: 'absolute',
-    width: 350,
-    height: 350,
-    borderRadius: '50%',
-    background: 'rgba(45, 212, 191, 0.06)',
-    filter: 'blur(80px)',
-    top: '-180px',
-    left: '-120px',
-    pointerEvents: 'none',
-  },
-
-  backgroundGlowTwo: {
-    position: 'absolute',
-    width: 350,
-    height: 350,
-    borderRadius: '50%',
-    background: 'rgba(99, 102, 241, 0.06)',
-    filter: 'blur(80px)',
-    bottom: '-180px',
-    right: '-120px',
-    pointerEvents: 'none',
-  },
-
   container: {
     width: '100%',
-    maxWidth: 430,
+    maxWidth: 420,
     position: 'relative',
     zIndex: 2,
   },
 
   logoArea: {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
+    textAlign: 'center',
     gap: 12,
-    marginBottom: 24,
-  },
-
-  logo: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    boxShadow:
-      '0 10px 35px rgba(45, 212, 191, 0.20)',
+    marginBottom: 22,
   },
 
   brandName: {
     fontFamily: 'var(--font-display)',
     fontSize: 24,
-    fontWeight: 800,
-    letterSpacing: -0.8,
+    fontWeight: 700,
+    letterSpacing: -0.5,
     color: 'var(--text-hi)',
   },
 
   brandSub: {
     marginTop: 2,
-    fontSize: 11,
-    color: 'var(--text-mid)',
+    fontSize: 13,
+    color: 'var(--text-low)',
   },
 
   card: {
     width: '100%',
     boxSizing: 'border-box',
-    background:
-      'linear-gradient(145deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018))',
-    backdropFilter: 'blur(18px)',
-    WebkitBackdropFilter: 'blur(18px)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 20,
-    padding: '32px',
-    boxShadow:
-      '0 25px 80px rgba(0,0,0,0.35)',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-xl)',
+    padding: '30px 28px 26px',
   },
 
   backLink: {
@@ -490,9 +372,9 @@ const styles = {
 
   title: {
     margin: 0,
-    fontSize: 25,
-    fontWeight: 800,
-    letterSpacing: -0.7,
+    fontSize: 22,
+    fontWeight: 700,
+    letterSpacing: -0.4,
     color: 'var(--text-hi)',
   },
 
@@ -515,6 +397,10 @@ const styles = {
     gap: 7,
   },
 
+  verifyNote: {
+    display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5,
+    color: 'var(--text-low)', marginBottom: 8,
+  },
   contactSection: {
     display: 'flex',
     flexDirection: 'column',
@@ -522,20 +408,21 @@ const styles = {
   },
 
   label: {
-    fontSize: 12,
-    fontWeight: 700,
+    fontSize: 13,
+    fontWeight: 600,
     color: 'var(--text-mid)',
+    paddingLeft: 4,
   },
 
   inputWrapper: {
     width: '100%',
-    height: 46,
+    height: 48,
     display: 'flex',
     alignItems: 'center',
     boxSizing: 'border-box',
-    background: 'rgba(0,0,0,0.18)',
-    border: '1px solid var(--border)',
-    borderRadius: 11,
+    background: 'var(--bg-elevated)',
+    border: '1px solid transparent',
+    borderRadius: 16,
     transition: 'all 0.2s ease',
   },
 
@@ -575,14 +462,14 @@ const styles = {
     gridTemplateColumns: '1fr 1fr',
     gap: 6,
     padding: 4,
-    borderRadius: 10,
-    background: 'rgba(0,0,0,0.15)',
-    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-pill)',
+    background: 'var(--bg-elevated)',
+    border: 'none',
   },
 
   tab: {
     border: 'none',
-    borderRadius: 10,
+    borderRadius: 'var(--radius-pill)',
     background: 'transparent',
     color: 'var(--text-mid)',
     padding: '9px 8px',
@@ -593,8 +480,8 @@ const styles = {
   },
 
   tabActive: {
-    background: 'rgba(45,212,191,0.12)',
-    color: 'var(--accent)',
+    background: 'var(--accent-soft)',
+    color: 'var(--text-hi)',
   },
 
   passwordHint: {
@@ -636,15 +523,12 @@ const styles = {
     justifyContent: 'center',
     gap: 10,
     border: 'none',
-    borderRadius: 11,
-    background:
-      'var(--accent-gradient)',
-    color: '#04211e',
-    fontSize: 13.5,
-    fontWeight: 800,
+    borderRadius: 'var(--radius-pill)',
+    background: 'var(--accent)',
+    color: 'var(--accent-contrast)',
+    fontSize: 14.5,
+    fontWeight: 650,
     cursor: 'pointer',
-    boxShadow:
-      '0 8px 25px rgba(45,212,191,0.18)',
     transition: 'all 0.2s ease',
   },
 
@@ -661,8 +545,8 @@ const styles = {
   spinner: {
     width: 14,
     height: 14,
-    border: '2px solid rgba(4,33,30,0.3)',
-    borderTopColor: '#04211e',
+    border: '2px solid rgba(255,255,255,0.3)',
+    borderTopColor: 'var(--accent-contrast)',
     borderRadius: '50%',
     display: 'inline-block',
     animation: 'spin 0.7s linear infinite',
@@ -675,11 +559,11 @@ const styles = {
     gap: 5,
     marginTop: 24,
     paddingTop: 20,
-    borderTop: '1px solid rgba(255,255,255,0.06)',
+    borderTop: '1px solid var(--border)',
   },
 
   switchText: {
-    fontSize: 12,
+    fontSize: 13,
     color: 'var(--text-mid)',
   },
 
@@ -687,8 +571,8 @@ const styles = {
     border: 'none',
     background: 'transparent',
     color: 'var(--accent)',
-    fontSize: 12,
-    fontWeight: 700,
+    fontSize: 13,
+    fontWeight: 650,
     cursor: 'pointer',
     padding: 0,
   },
@@ -699,9 +583,9 @@ const styles = {
     alignItems: 'center',
     gap: 8,
     marginTop: 20,
-    color: 'var(--text-mid)',
-    fontSize: 10.5,
-    opacity: 0.7,
+    color: 'var(--text-low)',
+    fontSize: 11.5,
+    opacity: 0.8,
   },
 
   footerDot: {

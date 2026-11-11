@@ -56,12 +56,12 @@ function Group({ title, members, dim }) {
 }
 
 const styles = {
-  wrap: { width: 216, background: 'var(--bg-base)', borderLeft: '1px solid var(--border)', padding: '16px 12px', overflowY: 'auto' },
-  label: { fontSize: 11, fontWeight: 700, color: 'var(--text-low)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.4 },
-  row: { display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px' },
+  wrap: { width: 232, flexShrink: 0, background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', padding: '18px 10px', overflowY: 'auto' },
+  label: { fontSize: 11.5, fontWeight: 650, color: 'var(--text-low)', marginBottom: 8, padding: '0 8px', letterSpacing: 0.2 },
+  row: { display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 'var(--radius-pill)' },
   avatarWrap: { position: 'relative' },
-  avatar: { width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11, color: '#0B0F14' },
-  avatarImg: { width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', display: 'block', border: '1px solid rgba(255,255,255,0.12)' },
+  avatar: { width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11, color: 'var(--on-color)' },
+  avatarImg: { width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', display: 'block', border: '1px solid color-mix(in srgb, var(--text-hi) 12%, transparent)' },
   dot: { position: 'absolute', bottom: -1, right: -1, width: 9, height: 9, borderRadius: '50%', border: '2px solid var(--bg-base)' },
   nameCol: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
   ownerTag: { fontSize: 8.5, fontWeight: 800, color: '#F0B429', border: '1px solid rgba(240,180,41,0.3)', borderRadius: 6, padding: '1px 4px', letterSpacing: 0.3, flexShrink: 0 },

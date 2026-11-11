@@ -37,7 +37,7 @@ export default function ServerRail({ servers, activeId, onSelect, onCreate, onJo
           title="Voltar para o início"
           onClick={onOpenFriends}
         >
-          <SafeCordMark />
+          <SafeCordMark size={46} />
         </button>
 
         <div style={styles.pillWrap}>
@@ -54,13 +54,15 @@ export default function ServerRail({ servers, activeId, onSelect, onCreate, onJo
               style={{
                 width: 22,
                 height: 22,
-                filter: friendsActive ? 'brightness(0) saturate(100%)' : 'brightness(0) invert(1)',
+                filter: friendsActive ? 'brightness(0) invert(1)' : 'var(--mono-icon-filter)', opacity: friendsActive ? 1 : 0.75,
               }}
             />
             {pendingFriendRequests > 0 && <span style={styles.badge}>{pendingFriendRequests}</span>}
           </button>
         </div>
       </div>
+
+      <div style={styles.divider} />
 
       {/* TRAY 2 — servidores: cartão separado, com rótulo próprio e rolagem independente */}
       <div style={styles.serverTray}>
@@ -70,7 +72,7 @@ export default function ServerRail({ servers, activeId, onSelect, onCreate, onJo
             const iconUrl = resolveAssetUrl(s.icon_url);
             const isOwner = s.owner_id === currentUserId;
             const unread = unreadByServer[s.id] || 0;
-            const isActive = s.id === activeId;
+            const isActive = s.id === activeId && !friendsActive;
             return (
               <div key={s.id} style={styles.pillWrap}>
                 {isActive && <span style={styles.activeBar} />}
@@ -175,19 +177,17 @@ export default function ServerRail({ servers, activeId, onSelect, onCreate, onJo
   );
 }
 
-// Mascote original do SafeCord — uma coruja estilizada (vigilância/proteção, combina
-// com o "Safe" do nome). Traço geométrico próprio, sem relação com nenhuma marca de terceiros.
-
 const styles = {
+  // Barra de servidores direto na moldura do app (sem fundo/borda próprios), como no Stoat
   rail: {
     width: 72,
-    background: 'var(--bg-void)',
+    flexShrink: 0,
+    background: 'transparent',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'stretch',
-    padding: '14px 0',
-    gap: 10,
-    borderRight: '1px solid var(--border)',
+    padding: '6px 0 0',
+    gap: 8,
     height: '100%',
     minHeight: 0,
   },
@@ -195,12 +195,10 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     flexShrink: 0,
-    padding: '8px 0 14px',
-    margin: '0 10px',
-    borderBottom: '1px solid var(--border)',
   },
+  divider: { height: 2, width: 32, borderRadius: 2, background: 'var(--bg-elevated)', alignSelf: 'center', flexShrink: 0 },
   serverTray: {
     display: 'flex',
     flexDirection: 'column',
@@ -208,155 +206,152 @@ const styles = {
     gap: 8,
     flex: 1,
     minHeight: 0,
-    padding: '2px 0',
   },
-  trayLabel: {
-    fontSize: 8.5,
-    fontWeight: 800,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: 'var(--text-low)',
-    marginBottom: 2,
-  },
+  trayLabel: { display: 'none' },
   serverList: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     overflowY: 'auto',
     flex: 1,
     minHeight: 0,
     width: '100%',
-    paddingBottom: 4,
+    padding: '2px 0 4px',
   },
   trayActions: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     flexShrink: 0,
-    paddingTop: 4,
+    padding: '4px 0 2px',
   },
+  // Ícone redondo que vira "squircle" quando selecionado
   pill: (active) => ({
     width: 46,
     height: 46,
-    borderRadius: active ? 14 : 23,
-    background: active ? 'var(--accent-gradient)' : 'var(--bg-surface)',
+    borderRadius: active ? 16 : 23,
+    background: active ? 'var(--accent)' : 'var(--bg-base)',
     color: active ? 'var(--accent-contrast)' : 'var(--text-mid)',
     border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontWeight: 700,
-    fontSize: 13,
+    fontWeight: 650,
+    fontSize: 14,
     cursor: 'pointer',
-    boxShadow: active ? '0 4px 18px var(--accent-glow)' : 'none',
-    transition: 'border-radius 0.15s, background 0.15s, box-shadow 0.15s',
+    transition: 'border-radius 0.18s ease, background 0.15s ease',
   }),
-  friendsPill: (active) => ({
-    boxShadow: active ? '0 0 0 1px var(--accent)' : 'none',
-  }),
+  friendsPill: () => ({}),
   logoBtn: {
-    transition: 'border-radius 0.15s, transform 0.12s',
+    background: 'transparent',
+    padding: 0,
+    transition: 'transform 0.12s ease',
   },
+  // Indicador em pílula na borda esquerda (seleção)
   activeBar: {
     position: 'absolute',
-    bottom: -6,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    width: 18,
-    height: 3,
-    borderRadius: 3,
-    background: 'var(--accent)',
+    left: 0,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: 4,
+    height: 36,
+    borderRadius: '0 4px 4px 0',
+    background: 'var(--text-hi)',
   },
   pillIcon: { width: '100%', height: '100%', objectFit: 'cover' },
-  pillWrap: { position: 'relative' },
+  pillWrap: { position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' },
   contextMenu: {
-    position: 'absolute', left: 'calc(100% + 8px)', top: 0, width: 190, background: '#171D27',
-    border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, boxShadow: 'var(--shadow-lg)',
-    zIndex: 60, overflow: 'hidden', padding: '4px 0',
+    position: 'absolute', left: 'calc(100% - 6px)', top: 0, width: 200, background: 'var(--bg-elevated)',
+    border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--shadow-lg)',
+    zIndex: 60, overflow: 'hidden', padding: 6,
   },
-  contextMenuTitle: { fontSize: 10.5, fontWeight: 700, color: 'var(--text-low)', padding: '8px 12px 4px', textTransform: 'uppercase', letterSpacing: 0.4 },
-  contextBtnDanger: { width: '100%', border: 'none', background: 'transparent', color: '#FCA5A5', textAlign: 'left', padding: '10px 12px', cursor: 'pointer', fontSize: 12.5 },
-  modalWarning: { fontSize: 12.5, color: 'var(--text-mid)', lineHeight: 1.5, margin: '0 0 16px' },
-  modalActionsRow: { display: 'flex', justifyContent: 'flex-end', gap: 10 },
-  modalCancelBtn: { border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-mid)', padding: '9px 14px', borderRadius: 'var(--radius-sm)', cursor: 'pointer' },
-  modalDangerBtn: { border: 'none', background: 'var(--danger)', color: '#fff', fontWeight: 700, padding: '9px 14px', borderRadius: 'var(--radius-sm)', cursor: 'pointer' },
+  contextMenuTitle: { fontSize: 11.5, fontWeight: 650, color: 'var(--text-low)', padding: '6px 10px 6px' },
+  contextBtnDanger: { width: '100%', border: 'none', background: 'transparent', color: 'var(--danger)', textAlign: 'left', padding: '9px 10px', cursor: 'pointer', fontSize: 13, borderRadius: 10 },
+  modalWarning: { fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.55, margin: '0 0 18px' },
+  modalActionsRow: { display: 'flex', justifyContent: 'flex-end', gap: 8 },
+  modalCancelBtn: { border: 'none', background: 'transparent', color: 'var(--text-mid)', padding: '10px 16px', borderRadius: 'var(--radius-pill)', cursor: 'pointer', fontWeight: 600 },
+  modalDangerBtn: { border: 'none', background: 'var(--danger)', color: '#fff', fontWeight: 650, padding: '10px 18px', borderRadius: 'var(--radius-pill)', cursor: 'pointer' },
   badge: {
     position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 12,
+    bottom: -3,
+    right: 9,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     background: 'var(--danger)',
     color: '#fff',
-    fontSize: 10,
-    fontWeight: 800,
+    fontSize: 10.5,
+    fontWeight: 750,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '0 3px',
-    border: '2px solid var(--bg-void)',
+    padding: '0 4px',
+    border: '3px solid var(--bg-void)',
   },
   unreadDot: {
     position: 'absolute',
-    left: -4,
+    left: 0,
     top: '50%',
     transform: 'translateY(-50%)',
-    width: 8,
+    width: 4,
     height: 8,
-    borderRadius: '50%',
-    background: '#fff',
-    boxShadow: '0 0 0 2px var(--bg-void)',
+    borderRadius: '0 4px 4px 0',
+    background: 'var(--text-hi)',
   },
   addBtn: {
     width: 46,
     height: 46,
     borderRadius: 23,
-    background: 'var(--bg-surface)',
-    color: 'var(--accent)',
-    border: '1px dashed var(--border)',
-    fontSize: 18,
+    background: 'var(--bg-base)',
+    color: 'var(--success)',
+    border: 'none',
+    fontSize: 22,
+    fontWeight: 400,
     cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   overlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(6,10,14,0.5)',
-    backdropFilter: 'blur(5px)',
-    WebkitBackdropFilter: 'blur(5px)',
+    background: 'var(--scrim)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 50,
   },
   modal: {
-    width: 320,
+    width: 380,
     background: 'var(--bg-surface)',
     border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-md)',
-    padding: 20,
+    borderRadius: 'var(--radius-xl)',
+    padding: 24,
+    boxShadow: 'var(--shadow-lg)',
   },
-  modalTitle: { fontFamily: 'var(--font-display)', fontSize: 16, margin: '0 0 14px' },
+  modalTitle: { fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, margin: '0 0 16px' },
   modalInput: {
     width: '100%',
     background: 'var(--bg-elevated)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '9px 10px',
+    border: '1px solid transparent',
+    borderRadius: 14,
+    padding: '12px 14px',
     color: 'var(--text-hi)',
-    fontSize: 13.5,
+    fontSize: 14,
+    outline: 'none',
   },
   modalBtn: {
-    marginTop: 14,
+    marginTop: 16,
     width: '100%',
     background: 'var(--accent)',
     color: 'var(--accent-contrast)',
-    fontWeight: 700,
+    fontWeight: 650,
     border: 'none',
-    borderRadius: 'var(--radius-sm)',
-    padding: '9px 0',
+    borderRadius: 'var(--radius-pill)',
+    padding: '11px 0',
     cursor: 'pointer',
+    fontSize: 14,
   },
 };
