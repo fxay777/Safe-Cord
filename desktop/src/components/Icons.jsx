@@ -576,3 +576,30 @@ export function PlusIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+export function LockIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <rect x="5" y="10.5" width="14" height="10" rx="2.6" {...stroke} />
+      <path d="M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5" {...stroke} />
+      <circle cx="12" cy="15.5" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function EyeIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" {...stroke} />
+      <circle cx="12" cy="12" r="3" {...stroke} />
+    </svg>
+  );
+}
+
+export function EyeOffIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4 4l16 16M9.9 6A9.9 9.9 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3 3.7M6.6 7.4A16.6 16.6 0 0 0 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.3-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2" {...stroke} />
+    </svg>
+  );
+}

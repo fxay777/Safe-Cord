@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { verifyEmail, resendVerification, changeEmail } from '../api';
 import SafeCordMark from './SafeCordMark';
+import { SpaceBackground } from './AuthScreen';
 
 const CODE_LENGTH = 6;
 
@@ -105,6 +106,7 @@ export default function VerifyEmailScreen({ api, user, devCode, onVerified, onSk
 
   return (
     <div style={styles.wrap}>
+      <SpaceBackground />
       <div style={styles.card}>
         <div style={styles.brand}>
           <SafeCordMark size={30} />
@@ -173,14 +175,24 @@ export default function VerifyEmailScreen({ api, user, devCode, onVerified, onSk
 }
 
 const styles = {
+  // Mesmo fundo "espacial" e card de vidro da tela de login
   wrap: {
+    position: 'relative', overflow: 'hidden',
     height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 42%), var(--bg-void)',
+    background: 'radial-gradient(ellipse at 50% 40%, #0E1A33 0%, #08101F 45%, #050A14 100%)',
     padding: 20,
+    // sempre escura (como o login), mesmo com o app no tema claro
+    '--text-hi': '#EEF3FB', '--text-mid': '#B3C0D4', '--text-low': '#7F90AE',
+    '--bg-elevated': 'rgba(8,14,28,0.55)', '--border': 'rgba(110,140,190,0.22)',
+    '--accent': '#1E7BFF', '--accent-contrast': '#FFFFFF',
   },
   card: {
-    width: 420, background: 'var(--bg-surface)', border: '1px solid var(--border)',
-    borderRadius: 24, padding: '30px 28px',
+    position: 'relative', zIndex: 2,
+    width: 420, maxWidth: '100%',
+    background: 'linear-gradient(180deg, rgba(22,34,58,0.72), rgba(12,20,38,0.78))',
+    backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+    border: '1px solid rgba(80,150,255,0.35)', borderRadius: 22, padding: '30px 30px',
+    boxShadow: '0 0 50px rgba(30,123,255,0.22), 0 30px 80px rgba(0,0,0,0.5)',
   },
   brand: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 },
   brandName: { fontSize: 19, fontWeight: 750, color: 'var(--text-hi)', letterSpacing: -0.4 },
@@ -193,7 +205,7 @@ const styles = {
     borderRadius: 12, padding: '8px 10px', color: 'var(--text-hi)', fontSize: 13, outline: 'none',
   },
   smallBtn: {
-    background: 'var(--accent)', color: 'var(--accent-contrast, #052622)', border: 'none',
+    background: 'var(--accent)', color: 'var(--accent-contrast)', border: 'none',
     borderRadius: 12, padding: '0 12px', fontWeight: 700, fontSize: 12, cursor: 'pointer',
   },
   smallBtnGhost: {
@@ -218,7 +230,7 @@ const styles = {
   },
   submit: {
     marginTop: 16, width: '100%', background: 'var(--accent)',
-    color: 'var(--accent-contrast, #052622)', fontWeight: 750, border: 'none',
+    color: 'var(--accent-contrast)', fontWeight: 750, border: 'none',
     borderRadius: 16, padding: '12px 0', cursor: 'pointer', fontSize: 14,
   },
   footerRow: {
