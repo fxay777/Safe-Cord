@@ -95,7 +95,7 @@ router.post('/register', async (req, res) => {
     db.prepare(
       `INSERT INTO users (id, username, tag, password_hash, avatar_color, display_name, avatar_url, banner_url,
                           bio, status, status_mode, email, email_verified, created_at)
-       VALUES (?, ?, ?, ?, ?, '', NULL, NULL, '', 'online', 'online', ?, 0, ?)`
+       VALUES (?, ?, ?, ?, ?, '', NULL, NULL, '', 'offline', 'online', ?, 0, ?)`
     ).run(id, username, tag, password_hash, avatar_color, normalizedEmail, Date.now());
   } catch (e) {
     // Corrida rara: alguém pegou a mesma tag entre o sorteio e o insert

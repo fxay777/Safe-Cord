@@ -26,6 +26,7 @@ const ensureUserColumns = () => {
     ['verification_sent_at', 'INTEGER'],
     // --- Assinatura (SafeCord Pro, comprada via Stripe) ---
     ['pro_until', 'INTEGER'], // timestamp em que a assinatura expira; null = não é Pro
+    ['last_seen_at', 'INTEGER'], // quando a última conexão caiu — "Visto há 1h" na lista de membros
   ];
 
   for (const [name, definition] of migrations) {
@@ -58,6 +59,10 @@ const ensureChannelColumns = () => {
   const existing = new Set(cols.map((c) => c.name));
   if (!existing.has('category_id')) {
     db.exec('ALTER TABLE channels ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL');
+  }
+  // Descrição do canal (aparece embaixo do nome no topo do chat)
+  if (!existing.has('topic')) {
+    db.exec("ALTER TABLE channels ADD COLUMN topic TEXT NOT NULL DEFAULT ''");
   }
 };
 
@@ -281,6 +286,10 @@ ensureChannelColumns();
 ensureFriendshipColumns();
 ensureMessageColumns();
 ensureConversationColumns();
+
+// Ninguém está conectado quando o servidor acaba de subir. Sem isso, quem estava online
+// quando o servidor caiu/reiniciou ficava "online" pra sempre na lista de membros.
+db.prepare("UPDATE users SET status = 'offline', last_seen_at = COALESCE(last_seen_at, ?) WHERE status != 'offline'").run(Date.now());
 
 // O schema antigo tinha UNIQUE em users.username, o que impedia dois "joao" existirem.
 // Com nicks estilo Discord quem identifica é o par nome#tag, então o UNIQUE sai da coluna

@@ -160,7 +160,7 @@ router.get('/:serverId/members', (req, res) => {
 
   const members = db
     .prepare(
-      `SELECT u.id, u.username, u.tag, u.avatar_color, u.display_name, u.avatar_url, u.banner_url, u.bio, u.status, u.status_mode
+      `SELECT u.id, u.username, u.tag, u.avatar_color, u.display_name, u.avatar_url, u.banner_url, u.bio, u.status, u.status_mode, u.last_seen_at
        FROM server_members m JOIN users u ON u.id = m.user_id
        WHERE m.server_id = ?`
     )
@@ -224,8 +224,9 @@ router.put('/:serverId/channels/:channelId', requireServerPermission('gerenciar_
   const channel = db.prepare('SELECT * FROM channels WHERE id = ? AND server_id = ?').get(req.params.channelId, req.params.serverId);
   if (!channel) return res.status(404).json({ error: 'Canal não encontrado' });
 
-  const { name, category_id } = req.body || {};
+  const { name, category_id, topic } = req.body || {};
   const nextName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 60) : channel.name;
+  const nextTopic = typeof topic === 'string' ? topic.trim().slice(0, 160) : (channel.topic || '');
 
   let categoryId = channel.category_id;
   if (category_id !== undefined) {
@@ -238,8 +239,10 @@ router.put('/:serverId/channels/:channelId', requireServerPermission('gerenciar_
     }
   }
 
-  db.prepare('UPDATE channels SET name = ?, category_id = ? WHERE id = ?').run(nextName, categoryId, channel.id);
+  db.prepare('UPDATE channels SET name = ?, category_id = ?, topic = ? WHERE id = ?').run(nextName, categoryId, nextTopic, channel.id);
   const updated = db.prepare('SELECT * FROM channels WHERE id = ?').get(channel.id);
+  // Todo mundo no servidor vê a mudança (nome/descrição) na hora
+  req.app.get('io')?.to(`server:${req.params.serverId}`).emit('channel:updated', { serverId: req.params.serverId, channel: updated });
   res.json({ channel: updated });
 });
 

@@ -4,7 +4,8 @@ import RoleManager from './RoleManager';
 import MemberRoleManager from './MemberRoleManager';
 import UserBar from './UserBar';
 import VoiceBar from './VoiceBar';
-import { TrashIcon, SpeakerIcon, GearIcon, CheckIcon, HashIcon } from './Icons';
+import { TrashIcon, SpeakerIcon, GearIcon, CheckIcon, HashIcon, ChevronDownIcon, UserPlusIcon, ImageIcon, PlusIcon, UsersIcon } from './Icons';
+import SafeCordMark from './SafeCordMark';
 import { resolveAssetUrl } from '../api';
 
 function NewChannelForm({ name, setName, type, setType, onConfirm, onCancel, error }) {
@@ -78,6 +79,8 @@ export default function ChannelSidebar({
   voiceError = '',
   onToggleVoiceMute,
   onLeaveVoice,
+  onUploadServerImage,
+  onRemoveServerImage,
 }) {
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('geral');
@@ -86,6 +89,7 @@ export default function ChannelSidebar({
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelType, setNewChannelType] = useState('text');
   const [channelError, setChannelError] = useState('');
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const isServerOwner = server?.owner_id === user?.id;
   const perms = myPermissions?.permissions || [];
@@ -152,29 +156,46 @@ export default function ChannelSidebar({
     }
   }
 
+  function copyInvite(event) {
+    event?.stopPropagation();
+    navigator.clipboard?.writeText(server.invite_code || '');
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 1600);
+  }
+
   function renderChannelBtn(c) {
-    const isActive = c.type === 'voice' ? c.id === voiceChannelId : c.id === activeChannelId;
-    const unread = c.type === 'text' ? (unreadByChannel[c.id] || 0) : 0;
-    const peopleHere = c.type === 'voice' ? (voicePresence[c.id] || []) : [];
+    const isVoice = c.type === 'voice';
+    const isActive = isVoice ? c.id === voiceChannelId : c.id === activeChannelId;
+    const unread = !isVoice ? (unreadByChannel[c.id] || 0) : 0;
+    const peopleHere = isVoice ? (voicePresence[c.id] || []) : [];
     return (
       <React.Fragment key={c.id}>
-        <div style={styles.channelRow}>
-          <button onClick={() => onSelectChannel(c)} style={styles.channelBtn(isActive)}>
-            <span style={styles.hash}>{c.type === 'voice' ? <SpeakerIcon size={13} /> : <HashIcon size={13} />}</span> {c.name}
+        <div style={styles.channelRow(isActive)} className={isActive ? "sc-channel-row sc-active" : "sc-channel-row"}>
+          <button onClick={() => onSelectChannel(c)} style={styles.channelBtn(isActive, unread > 0)}>
+            <span style={styles.hash}>{isVoice ? <SpeakerIcon size={15} /> : <HashIcon size={15} />}</span>
+            <span style={styles.channelName}>{c.name}</span>
             {unread > 0 && !isActive && (
               <span style={styles.channelUnreadBadge}>{unread > 99 ? '99+' : unread}</span>
             )}
+            {isVoice && peopleHere.length > 0 && (
+              <span style={styles.voiceCount(isActive)}><UsersIcon size={12} /> {peopleHere.length}</span>
+            )}
           </button>
-          {canDeleteChannels && (
+          {isActive && !isVoice ? (
+            <button type="button" style={styles.channelInlineBtn(true)} title={inviteCopied ? 'Convite copiado!' : `Convidar (copia o código #${server.invite_code})`} onClick={copyInvite}>
+              {inviteCopied ? <CheckIcon size={14} /> : <UserPlusIcon size={15} />}
+            </button>
+          ) : canDeleteChannels ? (
             <button
               type="button"
-              style={styles.channelDeleteBtn}
+              className="sc-channel-delete"
+              style={styles.channelInlineBtn(false)}
               title="Excluir canal"
               onClick={(e) => handleDeleteChannel(c.id, e)}
             >
               <TrashIcon size={13} />
             </button>
-          )}
+          ) : null}
         </div>
 
         {peopleHere.length > 0 && (
@@ -206,19 +227,22 @@ export default function ChannelSidebar({
 
   return (
     <div style={styles.wrap}>
-      <div style={styles.header}>
-        <span style={styles.headerName}>{server.name}</span>
-        <div style={styles.headerActions}>
-          <span style={styles.inviteCode} title="Código de convite">
-            #{server.invite_code}
-          </span>
-          {canOpenSettings && (
-            <button type="button" style={styles.serverMenuBtn} onClick={() => setServerSettingsOpen(true)} title="Configurações do servidor">
-              <GearIcon size={14} />
-            </button>
-          )}
+      <div style={styles.brand}>
+        <SafeCordMark size={22} />
+        <div style={{ minWidth: 0 }}>
+          <div style={styles.brandName}>SafeCord</div>
+          <div style={styles.brandTagline}>Conecte. Converse. Compartilhe.</div>
         </div>
       </div>
+
+      <ServerCard
+        server={server}
+        canManage={canManageServer}
+        canOpenSettings={canOpenSettings}
+        onOpenSettings={() => setServerSettingsOpen(true)}
+        onUploadServerImage={onUploadServerImage}
+        onRemoveServerImage={onRemoveServerImage}
+      />
 
       <div style={styles.channelList}>
         {uncategorized.map(renderChannelBtn)}
@@ -229,7 +253,7 @@ export default function ChannelSidebar({
           return (
             <div key={category.id} style={styles.categoryBlock}>
               <button type="button" style={styles.categoryHeader} onClick={() => toggleCategoryCollapsed(category.id)}>
-                <span style={styles.categoryChevron}>{collapsed ? '▶' : '▼'}</span>
+                <span style={{ ...styles.categoryChevron, transform: collapsed ? 'rotate(-90deg)' : 'none' }}><ChevronDownIcon size={13} /></span>
                 <span style={styles.categoryName}>{category.name}</span>
                 {canManageChannels && (
                   <span
@@ -239,7 +263,7 @@ export default function ChannelSidebar({
                     onClick={(e) => { e.stopPropagation(); openNewChannelForm(category.id); }}
                     title="Adicionar canal nesta categoria"
                   >
-                    +
+                    <PlusIcon size={14} />
                   </span>
                 )}
               </button>
@@ -273,12 +297,10 @@ export default function ChannelSidebar({
 
         {canManageChannels && newChannelFor === null && (
           <button type="button" style={styles.addChannelLink} onClick={() => openNewChannelForm('root')}>
-            + Adicionar canal
+            <PlusIcon size={14} /> Adicionar canal
           </button>
         )}
       </div>
-
-      <div style={{ flex: 1 }} />
 
       {voiceConnected && (
         <VoiceBar
@@ -370,6 +392,78 @@ export default function ChannelSidebar({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Card do servidor no topo da barra (banner + nome + descrição), como no layout de referência.
+// Dono/gerente troca o banner e o ícone direto aqui.
+function ServerCard({ server, canManage, canOpenSettings, onOpenSettings, onUploadServerImage, onRemoveServerImage }) {
+  const [uploading, setUploading] = useState(null);
+  const [error, setError] = useState('');
+  const bannerUrl = resolveAssetUrl(server.banner_url);
+  const iconUrl = resolveAssetUrl(server.icon_url);
+  const color = server.color || 'var(--accent)';
+
+  async function pick(kind, event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !onUploadServerImage) return;
+    if (!/^image\/(png|jpe?g|webp|gif)$/.test(file.type)) return setError('Use PNG, JPG, WEBP ou GIF.');
+    if (file.size > 8 * 1024 * 1024) return setError('Imagem muito grande (máx. 8MB).');
+    setError('');
+    setUploading(kind);
+    try {
+      await onUploadServerImage(kind, file);
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Falha ao enviar a imagem');
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  return (
+    <div style={styles.serverCardWrap}>
+      <div
+        className="sc-server-card"
+        style={{
+          ...styles.serverCard,
+          ...(bannerUrl
+            ? { backgroundImage: `linear-gradient(180deg, rgba(5,10,22,0.05) 30%, rgba(5,10,22,0.82) 100%), url(${bannerUrl})` }
+            : { backgroundImage: `radial-gradient(circle at 85% 20%, rgba(255,255,255,0.22), transparent 38%), radial-gradient(circle at 18% 30%, rgba(255,255,255,0.10) 0 1.5px, transparent 2px), linear-gradient(140deg, color-mix(in srgb, ${color} 85%, #050A16), #0A1430 95%)` }),
+          opacity: uploading === 'banner' ? 0.6 : 1,
+        }}
+      >
+        <div style={styles.serverCardTop}>
+          {iconUrl && <img src={iconUrl} alt="" style={styles.serverCardIcon} />}
+          <div style={{ flex: 1 }} />
+          {canManage && onUploadServerImage && (
+            <label className="sc-card-action" style={styles.serverCardBtn} title={bannerUrl ? 'Trocar banner' : 'Adicionar banner'}>
+              <ImageIcon size={14} />
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" style={{ display: 'none' }} onChange={(e) => pick('banner', e)} />
+            </label>
+          )}
+          {canOpenSettings && (
+            <button type="button" style={styles.serverCardBtn} onClick={onOpenSettings} title="Configurações do servidor">
+              <GearIcon size={14} />
+            </button>
+          )}
+        </div>
+        <div style={styles.serverCardName}>{server.name}</div>
+        <div style={styles.serverCardDesc}>{server.description || 'Bem-vindo ao servidor!'}</div>
+      </div>
+      {canManage && onUploadServerImage && (
+        <div style={styles.serverCardLinks}>
+          <label style={styles.serverCardLink}>
+            {uploading === 'icon' ? 'Enviando ícone…' : iconUrl ? 'Trocar ícone' : 'Adicionar ícone'}
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" style={{ display: 'none' }} onChange={(e) => pick('icon', e)} />
+          </label>
+          {bannerUrl && (
+            <button type="button" style={styles.serverCardLink} onClick={() => onRemoveServerImage?.('banner')}>Remover banner</button>
+          )}
+        </div>
+      )}
+      {error && <div style={styles.serverCardError}>{error}</div>}
     </div>
   );
 }
@@ -581,40 +675,79 @@ const styles = {
     color: 'var(--text-low)',
     padding: '0 10px 8px',
   },
-  channelBtn: (active) => ({
-    width: '100%',
+  // Linha do canal: o selecionado fica com o fundo azul sólido (texto branco), igual à referência
+  channelRow: (active) => ({
+    display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2, borderRadius: 12,
+    background: active ? 'var(--accent)' : 'transparent',
+    boxShadow: active ? '0 6px 18px var(--accent-glow)' : 'none',
+  }),
+  channelBtn: (active, unread) => ({
+    flex: 1,
+    minWidth: 0,
     textAlign: 'left',
-    background: active ? 'var(--accent-soft)' : 'transparent',
-    color: active ? 'var(--text-hi)' : 'var(--text-mid)',
+    background: 'transparent',
+    color: active ? 'var(--accent-contrast)' : unread ? 'var(--text-hi)' : 'var(--text-mid)',
     border: 'none',
-    borderRadius: 'var(--radius-pill)',
-    padding: '9px 14px',
+    borderRadius: 12,
+    padding: '8px 10px',
     fontSize: 14,
     cursor: 'pointer',
-    marginBottom: 2,
-    transition: 'background 0.15s ease, color 0.15s ease',
     display: 'flex',
     alignItems: 'center',
-    fontWeight: active ? 600 : 450,
+    gap: 9,
+    fontWeight: active || unread ? 600 : 450,
   }),
+  channelName: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   channelUnreadBadge: {
-    marginLeft: 'auto',
-    background: 'var(--danger)',
+    background: 'var(--accent)',
     color: '#fff',
-    fontSize: 10,
-    fontWeight: 800,
-    minWidth: 17,
-    height: 17,
-    borderRadius: 13,
+    fontSize: 11,
+    fontWeight: 700,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '0 4px',
+    padding: '0 6px',
+    flexShrink: 0,
   },
-  hash: { color: 'var(--text-low)', marginRight: 4, display: 'inline-flex', verticalAlign: 'middle', position: 'relative', top: -1 },
+  voiceCount: (active) => ({
+    display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, flexShrink: 0,
+    color: active ? 'var(--accent-contrast)' : 'var(--text-low)',
+  }),
+  channelInlineBtn: (onAccent) => ({
+    width: 30, height: 30, flexShrink: 0, marginRight: 3, border: 'none', borderRadius: 10, background: 'transparent',
+    color: onAccent ? 'var(--accent-contrast)' : 'var(--text-low)', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }),
+  hash: { color: 'inherit', opacity: 0.75, display: 'inline-flex', flexShrink: 0 },
+  brand: { display: 'flex', alignItems: 'center', gap: 10, padding: '16px 16px 12px', flexShrink: 0 },
+  brandName: { fontSize: 15, fontWeight: 750, color: 'var(--text-hi)', letterSpacing: -0.2 },
+  brandTagline: { fontSize: 11, color: 'var(--text-low)', marginTop: 1 },
+  serverCardWrap: { padding: '0 10px 10px', flexShrink: 0 },
+  serverCard: {
+    position: 'relative', height: 112, borderRadius: 16, padding: '10px 12px 12px',
+    backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', flexDirection: 'column',
+    border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)', overflow: 'hidden',
+    boxShadow: 'inset 0 0 40px rgba(30,123,255,0.15)',
+  },
+  serverCardTop: { display: 'flex', alignItems: 'center', gap: 6, flex: 1, alignSelf: 'stretch' },
+  serverCardIcon: { width: 26, height: 26, borderRadius: 8, objectFit: 'cover', alignSelf: 'flex-start' },
+  serverCardBtn: {
+    width: 28, height: 28, borderRadius: 9, border: 'none', background: 'rgba(5,10,22,0.35)', color: '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', alignSelf: 'flex-start',
+  },
+  serverCardName: { fontSize: 17, fontWeight: 750, color: '#fff', letterSpacing: -0.2, textShadow: '0 1px 8px rgba(0,0,0,0.35)' },
+  serverCardDesc: {
+    fontSize: 11.5, color: 'rgba(235,242,255,0.82)', lineHeight: 1.35, marginTop: 2,
+    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+  },
+  serverCardLinks: { display: 'flex', gap: 12, padding: '6px 4px 0' },
+  serverCardLink: { border: 'none', background: 'transparent', color: 'var(--text-low)', fontSize: 11.5, cursor: 'pointer', padding: 0 },
+  serverCardError: { fontSize: 11.5, color: 'var(--danger)', padding: '4px 4px 0' },
   inlineCheck: { display: 'inline-flex', alignItems: 'center', gap: 4 },
   channelList: { padding: '4px 8px 4px', flex: 1, minHeight: 0, overflowY: 'auto' },
-  channelRow: { display: 'flex', alignItems: 'center', gap: 4 },
   voiceMemberList: { display: 'flex', flexDirection: 'column', gap: 2, padding: '2px 0 6px 30px' },
   voiceMemberRow: { display: 'flex', alignItems: 'center', gap: 7, padding: '2px 4px' },
   voiceMemberAvatar: {
@@ -632,9 +765,9 @@ const styles = {
     width: '100%', display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none',
     cursor: 'pointer', padding: '6px 10px', marginBottom: 2,
   },
-  categoryChevron: { fontSize: 8, color: 'var(--text-low)' },
+  categoryChevron: { color: 'var(--text-low)', display: 'inline-flex', transition: 'transform 0.15s ease' },
   categoryName: { flex: 1, textAlign: 'left', fontSize: 12, fontWeight: 650, letterSpacing: 0.1, color: 'var(--text-low)' },
-  categoryAddBtn: { fontSize: 14, color: 'var(--text-low)', cursor: 'pointer', padding: '0 4px', lineHeight: 1 },
+  categoryAddBtn: { color: 'var(--text-low)', cursor: 'pointer', padding: '0 4px', display: 'inline-flex' },
   addChannelLink: {
     width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--text-low)',
     fontSize: 13, padding: '9px 14px', cursor: 'pointer', marginTop: 4, borderRadius: 'var(--radius-pill)',

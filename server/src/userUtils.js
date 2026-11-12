@@ -2,7 +2,7 @@ const db = require('./db');
 
 // Colunas que podem ir pro cliente (nunca password_hash nem verification_code).
 const PUBLIC_USER_COLUMNS = `id, username, tag, avatar_color, display_name, avatar_url, banner_url, bio,
-  status, status_mode, spotify_track, connections, email, email_verified, pro_until, created_at`;
+  status, status_mode, spotify_track, connections, email, email_verified, pro_until, last_seen_at, created_at`;
 
 const listBadgesStmt = db.prepare(
   `SELECT b.id, b.name, b.description, b.icon, b.color

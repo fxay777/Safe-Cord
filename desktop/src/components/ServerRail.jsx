@@ -37,7 +37,7 @@ export default function ServerRail({ servers, activeId, onSelect, onCreate, onJo
           title="Voltar para o início"
           onClick={onOpenFriends}
         >
-          <SafeCordMark size={46} />
+          <SafeCordMark size={46} style={{ borderRadius: 0, transform: 'scale(1.18)' }} />
         </button>
 
         <div style={styles.pillWrap}>
@@ -228,25 +228,32 @@ const styles = {
     padding: '4px 0 2px',
   },
   // Ícone redondo que vira "squircle" quando selecionado
+  // Ícones em "squircle" (quadrado arredondado); o selecionado ganha um anel azul com brilho
   pill: (active) => ({
     width: 46,
     height: 46,
-    borderRadius: active ? 16 : 23,
+    borderRadius: 15,
     background: active ? 'var(--accent)' : 'var(--bg-base)',
     color: active ? 'var(--accent-contrast)' : 'var(--text-mid)',
-    border: 'none',
+    border: '1px solid var(--border)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontWeight: 650,
     fontSize: 14,
     cursor: 'pointer',
-    transition: 'border-radius 0.18s ease, background 0.15s ease',
+    overflow: 'hidden',
+    boxShadow: active ? '0 0 0 2px var(--bg-void), 0 0 0 4px var(--accent), 0 0 22px var(--accent-glow)' : 'none',
+    transition: 'box-shadow 0.18s ease, background 0.15s ease',
   }),
   friendsPill: () => ({}),
   logoBtn: {
-    background: 'transparent',
+    background: '#1E7BFF',
     padding: 0,
+    border: 'none',
+    borderRadius: 15,
+    overflow: 'hidden',
+    boxShadow: '0 8px 22px rgba(30, 123, 255, 0.35)',
     transition: 'transform 0.12s ease',
   },
   // Indicador em pílula na borda esquerda (seleção)
@@ -303,10 +310,10 @@ const styles = {
   addBtn: {
     width: 46,
     height: 46,
-    borderRadius: 23,
+    borderRadius: 15,
     background: 'var(--bg-base)',
-    color: 'var(--success)',
-    border: 'none',
+    color: 'var(--text-mid)',
+    border: '1px solid var(--border)',
     fontSize: 22,
     fontWeight: 400,
     cursor: 'pointer',

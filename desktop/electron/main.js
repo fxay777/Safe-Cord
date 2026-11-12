@@ -68,7 +68,7 @@ function createWindow() {
     height: 820,
     minWidth: 940,
     minHeight: 600,
-    backgroundColor: '#DCEAFB',
+    backgroundColor: '#070C16',
     title: 'SafeCord',
     icon: path.join(__dirname, 'icon.png'),
     titleBarStyle: 'hiddenInset',

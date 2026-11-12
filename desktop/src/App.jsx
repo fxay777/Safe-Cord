@@ -15,7 +15,6 @@ import ScreenSharePicker from './components/ScreenSharePicker';
 import ErrorBoundary from './components/ErrorBoundary';
 import VerifyEmailScreen from './components/VerifyEmailScreen';
 import ShopModal from './components/ShopModal';
-import ServerBanner from './components/ServerBanner';
 import DirectMessagesView from './components/DirectMessagesView';
 import SettingsModal from './components/SettingsModal';
 import ProfileEditModal from './components/ProfileEditModal';
@@ -355,8 +354,15 @@ export default function App() {
       setTypingUsers((prev) => (prev.includes(username) ? prev : [...prev, username]));
       setTimeout(() => setTypingUsers((prev) => prev.filter((u) => u !== username)), 3000);
     };
-    const onPresence = ({ userId, status }) => {
-      setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, status } : m)));
+    const onPresence = ({ userId, status, last_seen_at }) => {
+      setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, status, ...(last_seen_at ? { last_seen_at } : {}) } : m)));
+    };
+    // Nome/descrição de canal mudou (alguém editou) — atualiza a lista e o topo do chat
+    const onChannelUpdated = ({ serverId, channel }) => {
+      setServers((prev) => prev.map((s) => (s.id === serverId
+        ? { ...s, channels: s.channels.map((c) => (c.id === channel.id ? { ...c, ...channel } : c)) }
+        : s)));
+      setActiveChannel((prev) => (prev?.id === channel.id ? { ...prev, ...channel } : prev));
     };
     const onVoicePresence = ({ channelId, participants }) => {
       setVoicePresence((prev) => ({ ...prev, [channelId]: participants }));
@@ -365,7 +371,9 @@ export default function App() {
     socket.on('typing', onTyping);
     socket.on('presence:update', onPresence);
     socket.on('voice:presence', onVoicePresence);
+    socket.on('channel:updated', onChannelUpdated);
     return () => {
+      socket.off('channel:updated', onChannelUpdated);
       socket.off('message:new', onMsg);
       socket.off('typing', onTyping);
       socket.off('presence:update', onPresence);
@@ -471,6 +479,14 @@ export default function App() {
     setServers((prev) =>
       prev.map((s) => (s.id === activeServerId ? { ...s, channels: [...s.channels, data.channel] } : s))
     );
+  }
+
+  async function handleUpdateChannelTopic(channelId, topic) {
+    const { data } = await api.put(`/servers/${activeServerId}/channels/${channelId}`, { topic });
+    setServers((prev) => prev.map((s) => (s.id === activeServerId
+      ? { ...s, channels: s.channels.map((c) => (c.id === channelId ? { ...c, ...data.channel } : c)) }
+      : s)));
+    setActiveChannel((prev) => (prev?.id === channelId ? { ...prev, ...data.channel } : prev));
   }
 
   async function handleDeleteChannel(channelId) {
@@ -634,6 +650,8 @@ export default function App() {
               remoteScreenShares={voice.remoteScreenShares}
               onViewScreenShare={setViewingScreenShare}
               onOpenShop={() => setShopOpen(true)}
+              onUploadServerImage={handleUploadServerImage}
+              onRemoveServerImage={handleRemoveServerImage}
             />
 
             {voice.connecting && !voice.connected && (
@@ -645,15 +663,6 @@ export default function App() {
           </div>
 
           <div style={styles.mainChatArea}>
-            {activeServer && (
-              <ServerBanner
-                server={activeServer}
-                user={user}
-                isOwner={activeServer.owner_id === user?.id}
-                onUploadServerImage={handleUploadServerImage}
-                onRemoveServerImage={handleRemoveServerImage}
-              />
-            )}
             <ChatView
               channel={activeChannel}
               messages={messages}
@@ -661,10 +670,14 @@ export default function App() {
               onTyping={() => activeChannel && socket.emit('typing', { channelId: activeChannel.id })}
               onUploadAttachment={(file) => uploadMessageAttachment(api, file)}
               typingUsers={typingUsers}
+              serverName={activeServer?.name}
+              inviteCode={activeServer?.invite_code}
+              canEditTopic={Boolean(myPermissions?.isOwner || myPermissions?.permissions?.includes('gerenciar_canais'))}
+              onUpdateTopic={(topic) => activeChannel && handleUpdateChannelTopic(activeChannel.id, topic)}
             />
           </div>
 
-          <MemberList members={members} />
+          <MemberList members={members} ownerId={activeServer?.owner_id} />
         </ErrorBoundary>
       )}
 
@@ -736,10 +749,12 @@ const styles = {
   middleCol: {
     display: 'flex', flexDirection: 'column', width: 264, height: '100%', flexShrink: 0,
     background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+    border: '1px solid var(--border)',
   },
   mainChatArea: {
     flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0,
     background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+    border: '1px solid var(--border)',
   },
   voiceConnectingBanner: {
     padding: '8px 12px', fontSize: 11.5, color: 'var(--text-mid)', background: 'var(--bg-elevated)',

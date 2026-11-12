@@ -524,3 +524,55 @@ export function BadgeIcon({ name, size = 16, ...props }) {
   const Icon = BADGE_ICONS[name] || BadgeGenericIcon;
   return <Icon size={size} {...props} />;
 }
+
+// ─── Ícones do layout novo ──────────────────────────────────────────────────
+export function ChevronDownIcon({ size = 14, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="m6 9 6 6 6-6" {...stroke} />
+    </svg>
+  );
+}
+
+export function UserPlusIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <circle cx="9" cy="8" r="3.6" {...stroke} />
+      <path d="M2.8 19.5c.9-3.3 3.4-5.2 6.2-5.2s5.3 1.9 6.2 5.2M18.5 8v6M15.5 11h6" {...stroke} />
+    </svg>
+  );
+}
+
+export function ImageIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="3" {...stroke} />
+      <circle cx="9" cy="9.5" r="1.6" {...stroke} />
+      <path d="m4.5 17.5 4.6-4.4a1.5 1.5 0 0 1 2 0l2.4 2.2 2.1-1.9a1.5 1.5 0 0 1 2 0l2.9 2.6" {...stroke} />
+    </svg>
+  );
+}
+
+export function SendIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M20.5 3.5 10 14M20.5 3.5l-6.6 17-3.9-6.5-6.5-3.9 17-6.6Z" {...stroke} />
+    </svg>
+  );
+}
+
+export function MoreIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <circle cx="12" cy="5.5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="18.5" r="1.7" />
+    </svg>
+  );
+}
+
+export function PlusIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M12 5v14M5 12h14" {...stroke} />
+    </svg>
+  );
+}

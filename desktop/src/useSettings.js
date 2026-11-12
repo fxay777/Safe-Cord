@@ -20,7 +20,7 @@ function shadeHex(hex, percent) {
 // Temas em degradê — cada um vira o gradiente de botões, banners e realces do app inteiro
 // (igual aos "Temas coloridos" do Discord Nitro, só que com paleta própria do SafeCord).
 export const ACCENT_PRESETS = [
-  { id: 'safecord', label: 'SafeCord', accent: '#3A9BFF', accentSecondary: '#C9E5FF' },
+  { id: 'safecord', label: 'SafeCord', accent: '#1E7BFF', accentSecondary: '#6FB1FF' },
   { id: 'skyblue', label: 'Azul Claro', accent: '#22C4E8', accentSecondary: '#7FE8FF' },
   { id: 'aurora', label: 'Aurora', accent: '#16C7B3', accentSecondary: '#8C7BFA' },
   { id: 'sunset', label: 'Pôr do Sol', accent: '#F0654F', accentSecondary: '#F0B429' },
@@ -58,8 +58,8 @@ function withDerived(theme) {
 
 const DEFAULT_SETTINGS = {
   themePresetId: 'safecord',
-  themeVersion: 3,
-  mode: 'light', // 'light' | 'dark' | 'system'
+  themeVersion: 4,
+  mode: 'dark', // 'light' | 'dark' | 'system'
   customAccent: null, // { accent, accentSecondary } | null — sobrepõe o preset quando definido
   audio: {
     inputDeviceId: '',
@@ -92,11 +92,12 @@ function loadSettings() {
       if (!parsed.themePresetId || parsed.themePresetId === 'skyblue') merged.themePresetId = 'safecord';
     }
     // v3: visual azul claro + branco — quem vem de versões antigas começa no tema claro
-    if ((parsed.themeVersion || 1) < 3) {
-      merged.mode = 'light';
-      merged.themeVersion = 3;
+    // v4: layout novo (azul-marinho) — volta todo mundo pro escuro uma vez; dá pra trocar em Aparência
+    if ((parsed.themeVersion || 1) < 4) {
+      merged.mode = 'dark';
+      merged.themeVersion = 4;
     }
-    if (!['light', 'dark', 'system'].includes(merged.mode)) merged.mode = 'light';
+    if (!['light', 'dark', 'system'].includes(merged.mode)) merged.mode = 'dark';
     if (!ACCENT_PRESETS.some((p) => p.id === merged.themePresetId)) {
       merged.themePresetId = DEFAULT_SETTINGS.themePresetId;
     }

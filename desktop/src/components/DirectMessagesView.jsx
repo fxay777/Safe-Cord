@@ -347,7 +347,7 @@ const styles = {
   wrap: { display: 'flex', height: '100%', width: '100%', gap: 'var(--panel-gap)', minWidth: 0 },
   list: {
     width: 264, minWidth: 264, background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)',
-    overflow: 'hidden', display: 'flex', flexDirection: 'column',
+    overflow: 'hidden', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
   },
   listScroll: { flex: 1, overflowY: 'auto', padding: '10px 8px' },
   navItem: {
@@ -423,5 +423,6 @@ const styles = {
   main: {
     flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column',
     background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+    border: '1px solid var(--border)',
   },
 };

@@ -89,6 +89,14 @@ function attachRealtime(io) {
       const safeAttachments = sanitizeAttachments(attachments);
       if ((!trimmed && safeAttachments.length === 0) || !channelId) return;
 
+      // Só membro do servidor pode mandar mensagem no canal (antes qualquer um com o id mandava)
+      const channel = db.prepare('SELECT server_id FROM channels WHERE id = ?').get(channelId);
+      if (!channel) return;
+      const isMember = db
+        .prepare('SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?')
+        .get(channel.server_id, socket.user.id);
+      if (!isMember) return;
+
       const id = uuidv4();
       const created_at = Date.now();
       db.prepare(
@@ -99,9 +107,16 @@ function attachRealtime(io) {
         .prepare('SELECT username, tag, avatar_color, avatar_url, banner_url, bio, display_name FROM users WHERE id = ?')
         .get(socket.user.id);
 
-      io.to(`channel:${channelId}`).emit('message:new', {
+      // Vai pra TODOS os membros do servidor (sala pessoal de cada um), não só pra quem está
+      // com o canal aberto — é isso que faz o contador de não lidas acumular nos outros canais.
+      const memberRooms = db
+        .prepare('SELECT user_id FROM server_members WHERE server_id = ?')
+        .all(channel.server_id)
+        .map((m) => `user:${m.user_id}`);
+      io.to([`channel:${channelId}`, ...memberRooms]).emit('message:new', {
         id,
         channelId,
+        serverId: channel.server_id,
         content: trimmed,
         attachments: safeAttachments,
         created_at,
@@ -243,8 +258,9 @@ function attachRealtime(io) {
       sockets?.delete(socket.id);
       if (sockets && sockets.size === 0) {
         userSockets.delete(socket.user.id);
-        db.prepare('UPDATE users SET status = ? WHERE id = ?').run('offline', socket.user.id);
-        socket.broadcast.emit('presence:update', { userId: socket.user.id, status: 'offline' });
+        const seenAt = Date.now();
+        db.prepare('UPDATE users SET status = ?, last_seen_at = ? WHERE id = ?').run('offline', seenAt, socket.user.id);
+        socket.broadcast.emit('presence:update', { userId: socket.user.id, status: 'offline', last_seen_at: seenAt });
       }
     });
   });

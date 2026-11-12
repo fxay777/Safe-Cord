@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { resolveAssetUrl } from '../api';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import BadgeRow from './BadgeRow';
-import { SearchIcon, BellIcon, SmileyIcon, ArrowUpIcon, EditIcon, LeaveIcon } from './Icons';
+import { SearchIcon, SmileyIcon, EditIcon, LeaveIcon, UserPlusIcon, ImageIcon, SendIcon, PlusIcon, CheckIcon, CloseIcon } from './Icons';
+import logo from '../assets/logo.png';
 import { EmptyChannelArt, EmptyMessagesArt } from './EmptyStateArt';
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB: cobre imagem e vídeo curto
@@ -17,7 +18,14 @@ export default function ChatView({
   isDM = false,
   onRenameGroup,
   onLeaveGroup,
+  serverName,
+  inviteCode,
+  canEditTopic = false,
+  onUpdateTopic,
 }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [topicDraft, setTopicDraft] = useState(null); // null = não está editando
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]); // [{tempId,url,name,size,type,previewUrl,uploading}]
   const [uploadError, setUploadError] = useState('');
@@ -49,6 +57,8 @@ export default function ChatView({
     setAttachments([]);
     setUploadError('');
     setEmojiOpen(false);
+    setSearchQuery('');
+    setTopicDraft(null);
   }, [channel?.id]);
 
   if (!channel) {
@@ -62,6 +72,12 @@ export default function ChatView({
       </div>
     );
   }
+
+  const query = searchQuery.trim().toLowerCase();
+  const visibleMessages = query
+    ? messages.filter((m) => (m.content || '').toLowerCase().includes(query)
+      || (m.display_name || m.username || '').toLowerCase().includes(query))
+    : messages;
 
   function submit(e) {
     e.preventDefault();
@@ -155,49 +171,95 @@ export default function ChatView({
         <div style={styles.channelIcon}>{isDM ? '@' : '#'}</div>
 
         <div style={styles.headerInfo}>
-          <div style={styles.channelName}>
-            {channel.name}
-          </div>
-
-          <div style={styles.channelDescription}>
-            {channel.isGroup
-              ? `${channel.memberCount} membros`
-              : isDM ? 'Conversa direta' : 'Converse com os membros deste canal'}
-          </div>
+          <div style={styles.channelName}>{channel.name}</div>
+          {topicDraft !== null ? (
+            <form
+              style={styles.topicForm}
+              onSubmit={(e) => { e.preventDefault(); onUpdateTopic?.(topicDraft); setTopicDraft(null); }}
+            >
+              <input
+                autoFocus
+                value={topicDraft}
+                maxLength={160}
+                onChange={(e) => setTopicDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setTopicDraft(null)}
+                placeholder="Sobre o que é esse canal?"
+                style={styles.topicInput}
+              />
+              <button type="submit" style={styles.topicSave} title="Salvar"><CheckIcon size={13} /></button>
+            </form>
+          ) : (
+            <div
+              style={{ ...styles.channelDescription, cursor: canEditTopic && !isDM ? 'pointer' : 'default' }}
+              title={canEditTopic && !isDM ? 'Clique pra editar a descrição' : undefined}
+              onClick={() => canEditTopic && !isDM && setTopicDraft(channel.topic || '')}
+            >
+              {channel.isGroup
+                ? `${channel.memberCount} membros`
+                : isDM
+                  ? 'Conversa direta'
+                  : channel.topic || (canEditTopic ? 'Adicionar uma descrição ao canal' : 'Converse sobre qualquer assunto com a comunidade.')}
+            </div>
+          )}
         </div>
 
         <div style={styles.headerActions}>
           {channel.isGroup && onRenameGroup && (
-            <button type="button" style={styles.headerButton} title="Renomear grupo" onClick={renameGroup}>
+            <button type="button" className="sc-icon-btn" style={styles.headerButton} title="Renomear grupo" onClick={renameGroup}>
               <EditIcon size={15} />
             </button>
           )}
           {channel.isGroup && onLeaveGroup && (
-            <button type="button" style={styles.headerButton} title="Sair do grupo" onClick={onLeaveGroup}>
+            <button type="button" className="sc-icon-btn" style={styles.headerButton} title="Sair do grupo" onClick={onLeaveGroup}>
               <LeaveIcon size={16} />
             </button>
           )}
-          <button
-            type="button"
-            style={styles.headerButton}
-            title="Pesquisar"
-          >
-            <SearchIcon size={16} />
-          </button>
-
-          <button
-            type="button"
-            style={styles.headerButton}
-            title="Notificações"
-          >
-            <BellIcon size={16} />
-          </button>
+          {!isDM && inviteCode && (
+            <button
+              type="button"
+              className="sc-icon-btn"
+              style={styles.headerButton}
+              title={inviteCopied ? 'Convite copiado!' : `Convidar pessoas (copia #${inviteCode})`}
+              onClick={() => {
+                navigator.clipboard?.writeText(inviteCode);
+                setInviteCopied(true);
+                setTimeout(() => setInviteCopied(false), 1600);
+              }}
+            >
+              {inviteCopied ? <CheckIcon size={16} /> : <UserPlusIcon size={17} />}
+            </button>
+          )}
+          <label style={styles.searchBox}>
+            <SearchIcon size={14} style={{ color: 'var(--text-low)', flexShrink: 0 }} />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setSearchQuery('')}
+              placeholder={serverName && !isDM ? `Buscar em ${serverName}…` : 'Buscar na conversa…'}
+              style={styles.searchInput}
+            />
+            {searchQuery && (
+              <button type="button" style={styles.searchClear} onClick={() => setSearchQuery('')} title="Limpar">
+                <CloseIcon size={12} />
+              </button>
+            )}
+          </label>
         </div>
       </header>
 
       {/* MESSAGES */}
       <main style={styles.messages}>
-        {messages.length === 0 ? (
+        {searchQuery.trim() && (
+          <div style={styles.searchResultBar}>
+            {visibleMessages.length === 0
+              ? `Nada encontrado pra "${searchQuery.trim()}" nas mensagens carregadas`
+              : `${visibleMessages.length} mensagem(ns) com "${searchQuery.trim()}"`}
+          </div>
+        )}
+
+        {!isDM && !searchQuery.trim() && <ChannelWelcome channelName={channel.name} />}
+
+        {messages.length === 0 && !isDM ? null : messages.length === 0 ? (
           <div style={styles.welcome}>
             <EmptyMessagesArt />
 
@@ -210,8 +272,8 @@ export default function ChatView({
             </p>
           </div>
         ) : (
-          messages.map((m, i) => {
-            const prev = messages[i - 1];
+          visibleMessages.map((m, i) => {
+            const prev = visibleMessages[i - 1];
             const authorName = m.display_name || m.username || 'Usuário';
             const initials = (authorName || '?')
               .split(' ')
@@ -357,33 +419,31 @@ export default function ChatView({
 
       {/* INPUT */}
       <div style={styles.inputContainer}>
-        <form
-          onSubmit={submit}
-          style={styles.inputBox}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFilesSelected}
+        />
+        <button
+          type="button"
+          className="sc-icon-btn"
+          style={styles.plusButton}
+          title="Anexar imagem ou vídeo"
+          onClick={() => fileInputRef.current?.click()}
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            style={{ display: 'none' }}
-            onChange={handleFilesSelected}
-          />
-          <button
-            type="button"
-            style={styles.inputAction}
-            title="Anexar imagem ou vídeo"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            +
-          </button>
+          <PlusIcon size={18} />
+        </button>
 
+        <form onSubmit={submit} style={styles.inputBox}>
           <textarea
             ref={textareaRef}
             value={text}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder={isDM ? `Conversar com ${channel.name}` : `Conversar em #${channel.name}`}
+            placeholder={isDM ? `Escreva para ${channel.name}` : `Escreva em #${channel.name}`}
             rows={1}
             style={styles.textarea}
           />
@@ -391,6 +451,7 @@ export default function ChatView({
           <div ref={emojiWrapRef} style={{ position: 'relative' }}>
             <button
               type="button"
+              className="sc-icon-btn"
               style={styles.inputAction}
               title="Emoji"
               onClick={() => setEmojiOpen((v) => !v)}
@@ -399,35 +460,39 @@ export default function ChatView({
             </button>
             {emojiOpen && (
               <div style={styles.emojiPickerWrap}>
-                <EmojiPicker onEmojiClick={insertEmoji} theme={EmojiTheme.DARK} height={360} width={320} />
+                <EmojiPicker
+                  onEmojiClick={insertEmoji}
+                  theme={document.documentElement.getAttribute('data-mode') === 'light' ? EmojiTheme.LIGHT : EmojiTheme.DARK}
+                  height={360}
+                  width={320}
+                />
               </div>
             )}
           </div>
 
           <button
-            type="submit"
-            disabled={!text.trim() && attachments.every((a) => a.uploading)}
-            style={{
-              ...styles.sendButton,
-              ...((text.trim() || attachments.some((a) => !a.uploading))
-                ? styles.sendButtonActive
-                : {}),
-            }}
-            title="Enviar mensagem"
+            type="button"
+            className="sc-icon-btn"
+            style={styles.inputAction}
+            title="Enviar imagem"
+            onClick={() => fileInputRef.current?.click()}
           >
-            <ArrowUpIcon size={16} />
+            <ImageIcon size={18} />
           </button>
         </form>
 
-        <div style={styles.inputHint}>
-          <span>
-            Pressione <strong>Enter</strong> para enviar
-          </span>
-
-          <span>
-            <strong>Shift + Enter</strong> para nova linha
-          </span>
-        </div>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!text.trim() && !attachments.some((a) => !a.uploading)}
+          style={{
+            ...styles.sendButton,
+            opacity: (text.trim() || attachments.some((a) => !a.uploading)) ? 1 : 0.55,
+          }}
+          title="Enviar mensagem (Enter)"
+        >
+          <SendIcon size={18} />
+        </button>
       </div>
     </div>
   );
@@ -465,6 +530,40 @@ function formatTime(ts) {
   );
 }
 
+// Card de boas-vindas no começo de todo canal de texto (ilustração + texto), como na referência
+function ChannelWelcome({ channelName }) {
+  return (
+    <div style={styles.channelWelcome}>
+      <svg viewBox="0 0 300 150" style={styles.channelWelcomeArt} aria-hidden="true">
+        <defs>
+          <linearGradient id="scw-sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#0B1630" />
+            <stop offset="1" stopColor="#13254A" />
+          </linearGradient>
+          <radialGradient id="scw-moon" cx="0.4" cy="0.35" r="0.7">
+            <stop offset="0" stopColor="#3B5C9A" />
+            <stop offset="1" stopColor="#1B2E58" />
+          </radialGradient>
+        </defs>
+        <rect width="300" height="150" fill="url(#scw-sky)" />
+        <circle cx="205" cy="92" r="64" fill="url(#scw-moon)" opacity="0.9" />
+        {[[30, 22], [70, 50], [120, 18], [260, 28], [280, 70], [150, 44], [48, 88], [236, 12]].map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r={i % 3 === 0 ? 1.6 : 1} fill="#BFD6FF" opacity={0.8} />
+        ))}
+        <path d="M0 118 C60 96 110 112 160 104 C210 96 250 112 300 102 V150 H0Z" fill="#1A3062" />
+        <path d="M0 132 C70 118 120 134 180 126 C230 120 270 132 300 126 V150 H0Z" fill="#22396F" />
+        <image href={logo} x="58" y="66" width="62" height="62" />
+      </svg>
+      <div style={styles.channelWelcomeText}>
+        <div style={styles.channelWelcomeTitle}>Boas conversas<br />levam a grandes ideias.</div>
+        <div style={styles.channelWelcomeSub}>
+          Este é o #{channelName}, um espaço livre para você conversar, se apresentar e se sentir em casa.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function formatDate(ts) {
   const date = new Date(ts);
   const today = new Date();
@@ -472,12 +571,14 @@ function formatDate(ts) {
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
 
+  const full = date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+
   if (isSameDay(date, today)) {
-    return 'Hoje';
+    return `Hoje, ${full}`;
   }
 
   if (isSameDay(date, yesterday)) {
-    return 'Ontem';
+    return `Ontem, ${full}`;
   }
 
   return date.toLocaleDateString('pt-BR', {
@@ -549,21 +650,22 @@ const styles = {
   /* HEADER */
 
   header: {
-    height: 58,
-    minHeight: 58,
+    height: 72,
+    minHeight: 72,
     display: 'flex',
     alignItems: 'center',
     gap: 12,
-    padding: '0 14px 0 20px',
+    padding: '0 16px 0 22px',
     background: 'var(--bg-surface)',
     borderBottom: '1px solid var(--border)',
     zIndex: 5,
   },
 
   channelIcon: {
-    color: 'var(--text-mid)',
-    fontSize: 23,
-    fontWeight: 700,
+    color: 'var(--text-low)',
+    fontSize: 26,
+    fontWeight: 500,
+    lineHeight: 1,
   },
 
   headerInfo: {
@@ -573,15 +675,54 @@ const styles = {
 
   channelName: {
     color: 'var(--text-hi)',
-    fontSize: 15,
-    fontWeight: 650,
+    fontSize: 19,
+    fontWeight: 700,
+    letterSpacing: -0.3,
   },
 
   channelDescription: {
-    marginTop: 1,
+    marginTop: 2,
     color: 'var(--text-low)',
-    fontSize: 11.5,
+    fontSize: 12.5,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
+  topicForm: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, maxWidth: 420 },
+  topicInput: {
+    flex: 1, background: 'var(--bg-elevated)', border: '1px solid var(--accent)', borderRadius: 9,
+    color: 'var(--text-hi)', fontSize: 12.5, padding: '5px 9px', outline: 'none', fontFamily: 'inherit',
+  },
+  topicSave: {
+    width: 26, height: 26, borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+  },
+  searchBox: {
+    display: 'flex', alignItems: 'center', gap: 8, width: 220, height: 38, marginLeft: 4,
+    background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 12, padding: '0 10px 0 12px',
+    cursor: 'text',
+  },
+  searchInput: {
+    flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
+    color: 'var(--text-hi)', fontSize: 12.5, fontFamily: 'inherit',
+  },
+  searchClear: {
+    width: 20, height: 20, borderRadius: 10, border: 'none', background: 'var(--bg-hover)', color: 'var(--text-mid)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
+  },
+  searchResultBar: {
+    fontSize: 12, color: 'var(--text-mid)', background: 'var(--accent-softer)', borderRadius: 10,
+    padding: '7px 12px', marginBottom: 10,
+  },
+  channelWelcome: {
+    display: 'flex', alignItems: 'center', gap: 22, margin: '4px 0 6px', padding: 12,
+    background: 'linear-gradient(120deg, color-mix(in srgb, var(--accent) 7%, var(--bg-surface)), var(--bg-surface))',
+    border: '1px solid var(--border)', borderRadius: 18,
+  },
+  channelWelcomeArt: { width: 260, maxWidth: '45%', height: 'auto', borderRadius: 12, flexShrink: 0, display: 'block' },
+  channelWelcomeText: { minWidth: 0 },
+  channelWelcomeTitle: { fontSize: 18, fontWeight: 750, color: 'var(--text-hi)', lineHeight: 1.25, letterSpacing: -0.3 },
+  channelWelcomeSub: { fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.55, marginTop: 8, maxWidth: 320 },
 
   headerActions: {
     display: 'flex',
@@ -589,11 +730,11 @@ const styles = {
   },
 
   headerButton: {
-    width: 36,
-    height: 36,
-    border: 'none',
-    borderRadius: 18,
-    background: 'transparent',
+    width: 38,
+    height: 38,
+    border: '1px solid var(--border)',
+    borderRadius: 12,
+    background: 'var(--bg-elevated)',
     color: 'var(--text-mid)',
     cursor: 'pointer',
     display: 'flex',
@@ -725,17 +866,14 @@ const styles = {
   dateLine: {
     flex: 1,
     height: 1,
-    background: 'var(--border)',
+    background: 'transparent',
   },
 
   dateText: {
     color: 'var(--text-low)',
     fontSize: 11.5,
-    fontWeight: 600,
+    fontWeight: 500,
     whiteSpace: 'nowrap',
-    background: 'var(--bg-elevated)',
-    padding: '3px 10px',
-    borderRadius: 'var(--radius-pill)',
   },
 
   /* TYPING */
@@ -760,19 +898,37 @@ const styles = {
   /* INPUT */
 
   inputContainer: {
-    padding: '4px 16px 14px',
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: 10,
+    padding: '6px 16px 16px',
     background: 'var(--bg-surface)',
+  },
+  plusButton: {
+    width: 46,
+    height: 46,
+    flexShrink: 0,
+    border: '1px solid var(--border)',
+    borderRadius: '50%',
+    background: 'var(--bg-elevated)',
+    color: 'var(--text-mid)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   inputBox: {
+    flex: 1,
+    minWidth: 0,
     display: 'flex',
     alignItems: 'flex-end',
-    gap: 4,
-    minHeight: 50,
+    gap: 2,
+    minHeight: 46,
     background: 'var(--bg-elevated)',
-    border: 'none',
-    borderRadius: 25,
-    padding: '5px 6px 5px 6px',
+    border: '1px solid var(--border)',
+    borderRadius: 23,
+    padding: '4px 6px 4px 12px',
   },
 
   inputAction: {
@@ -800,27 +956,27 @@ const styles = {
     outline: 'none',
     background: 'transparent',
     color: 'var(--text-hi)',
-    fontSize: 14.5,
+    fontSize: 14,
     lineHeight: 1.45,
-    padding: '10px 6px',
+    padding: '9px 4px',
     fontFamily: 'inherit',
     overflowY: 'auto',
   },
 
   sendButton: {
-    width: 36,
-    height: 36,
+    width: 46,
+    height: 46,
     flexShrink: 0,
     border: 'none',
-    borderRadius: 20,
-    background: 'transparent',
-    color: 'var(--text-low)',
-    fontWeight: 700,
-    cursor: 'default',
+    borderRadius: '50%',
+    background: 'var(--accent)',
+    color: 'var(--accent-contrast)',
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all 0.2s ease',
+    boxShadow: '0 8px 22px var(--accent-glow)',
+    transition: 'opacity 0.15s ease',
   },
 
   sendButtonActive: {
@@ -858,7 +1014,7 @@ const styles = {
     lineHeight: '18px', cursor: 'pointer', padding: 0,
   },
   emojiPickerWrap: {
-    position: 'absolute', bottom: 44, right: 0, zIndex: 20,
+    position: 'absolute', bottom: 48, right: -40, zIndex: 20,
     boxShadow: '0 12px 40px rgba(0,0,0,0.4)', borderRadius: 16, overflow: 'hidden',
   },
   inputHint: {

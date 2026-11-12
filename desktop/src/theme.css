@@ -2,42 +2,42 @@
   /* SafeCord — azul claro + branco. Duas versões das superfícies:
      escuro azulado (padrão do :root) e claro ([data-mode="light"]).
      A cor de destaque (--accent…) vem do tema escolhido e vale pros dois modos. */
-  --bg-void: #08101C;      /* moldura do app (atrás dos painéis) */
-  --bg-base: #0E1828;      /* painéis laterais */
-  --bg-surface: #122036;   /* painel principal / modais */
-  --bg-elevated: #1A2A42;  /* campos, cartões */
-  --bg-hover: #223554;
+  --bg-void: #070C16;      /* moldura do app (atrás dos painéis) */
+  --bg-base: #0D1424;      /* painéis laterais */
+  --bg-surface: #0F1729;   /* painel principal / modais */
+  --bg-elevated: #172238;  /* campos, cartões */
+  --bg-hover: #1C2A44;
 
-  --accent: #3A9BFF;
-  --accent-dim: #2D79C7;
-  --accent-glow: rgba(58, 155, 255, 0.32);
-  --accent-secondary: #C9E5FF;
-  --accent-secondary-dim: #9DB3C7;
-  --accent-gradient: linear-gradient(135deg, #3A9BFF, #C9E5FF);
-  --accent-soft: rgba(58, 155, 255, 0.18);
-  --accent-softer: rgba(58, 155, 255, 0.10);
-  --accent-ambient: rgba(58, 155, 255, 0.07);
-  --accent-secondary-ambient: rgba(201, 229, 255, 0.06);
+  --accent: #1E7BFF;
+  --accent-dim: #1862CC;
+  --accent-glow: rgba(30, 123, 255, 0.45);
+  --accent-secondary: #6FB1FF;
+  --accent-secondary-dim: #588DCC;
+  --accent-gradient: linear-gradient(135deg, #1E7BFF, #6FB1FF);
+  --accent-soft: rgba(30, 123, 255, 0.18);
+  --accent-softer: rgba(30, 123, 255, 0.10);
+  --accent-ambient: rgba(30, 123, 255, 0.07);
+  --accent-secondary-ambient: rgba(111, 177, 255, 0.06);
   --accent-contrast: #FFFFFF;
 
   --warn: #F0B429;
   --danger: #F2555A;
   --success: #34C77B;
 
-  --text-hi: #F2F7FF;
-  --text-mid: #B5C4DA;
-  --text-low: #7C8FAB;
+  --text-hi: #EEF3FB;
+  --text-mid: #B3C0D4;
+  --text-low: #7686A0;
   --on-color: #0A1424;     /* texto em cima de avatares/cores vivas */
   --mono-icon-filter: brightness(0) invert(1); /* deixa ícones PNG monocromáticos na cor do texto */
 
-  --border: #1F3049;
+  --border: #1A2539;
   --scrim: rgba(3, 8, 16, 0.62);
   --radius-sm: 12px;
   --radius-md: 16px;
   --radius-lg: 22px;
   --radius-xl: 28px;
   --radius-pill: 999px;
-  --panel-gap: 8px;
+  --panel-gap: 10px;
 
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.28);
   --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.38);
@@ -127,3 +127,10 @@ input:focus-visible,
   100% { box-shadow: 0 0 0 6px rgba(45, 212, 191, 0); }
 }
 .status-dot.online { background: var(--success); animation: pulse-ring 2s infinite; }
+
+/* ─── Linhas de canal / membros: hover e ações que só aparecem no hover ─── */
+.sc-channel-row:hover:not(.sc-active) { background: var(--bg-hover) !important; }
+.sc-channel-row:not(:hover) .sc-channel-delete { opacity: 0; }
+.sc-member-row:hover { background: var(--bg-hover); }
+.sc-icon-btn:hover { background: var(--bg-hover) !important; color: var(--text-hi) !important; }
+.chat-message:hover { background: color-mix(in srgb, var(--text-hi) 3%, transparent); }
