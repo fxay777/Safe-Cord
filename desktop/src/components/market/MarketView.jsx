@@ -453,7 +453,7 @@ function CheckoutModal({ api, config, product, store, onClose, onDone }) {
         ? await api.post(`/market/orders/${order.orderId}/dev-pay`)
         : await api.post(`/market/orders/${order.orderId}/confirm`);
       if (data.order.status === 'pending') {
-        setError('O pagamento ainda não caiu. Termine no navegador e tente de novo.');
+        setError('O pagamento ainda não caiu. Se pagou com Pix, espere alguns segundos e clique de novo; boleto pode levar até 2 dias úteis.');
       } else {
         setFinalOrder(data.order);
         setStep('done');
@@ -548,12 +548,12 @@ function CheckoutModal({ api, config, product, store, onClose, onDone }) {
               {order?.devPayment ? (
                 <>
                   <div style={styles.payTitle}>Modo de teste</div>
-                  <div style={styles.payText}>O Stripe não está configurado no servidor, então dá pra simular o pagamento pra testar a loja.</div>
+                  <div style={styles.payText}>O Mercado Pago não está configurado no servidor, então dá pra simular o pagamento pra testar a loja.</div>
                 </>
               ) : (
                 <>
-                  <div style={styles.payTitle}>Abrimos o pagamento no navegador</div>
-                  <div style={styles.payText}>Pague por lá (cartão, Pix ou boleto, conforme o Stripe). Quando terminar, volte e clique abaixo.</div>
+                  <div style={styles.payTitle}>Abrimos o Mercado Pago no navegador</div>
+                  <div style={styles.payText}>Pague por lá com Pix, cartão ou boleto. Quando terminar, volte e clique abaixo. Pix costuma cair na hora; boleto pode levar até 2 dias úteis.</div>
                   {order?.checkoutUrl && (
                     <button type="button" style={{ ...ui.btnGhost, marginTop: 10 }} onClick={() => window.open(order.checkoutUrl, '_blank', 'noopener')}>Abrir pagamento de novo</button>
                   )}

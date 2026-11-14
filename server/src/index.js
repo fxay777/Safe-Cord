@@ -17,6 +17,7 @@ const spotifyRoutes = require('./routes/spotifyRoutes');
 const badgeRoutes = require('./routes/badgeRoutes');
 const shopRoutes = require('./routes/shopRoutes');
 const marketRoutes = require('./routes/marketRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 const { attachRealtime } = require('./realtime');
 const { isSmtpConfigured } = require('./mailer');
 
@@ -53,6 +54,7 @@ app.use('/api/spotify', spotifyRoutes);
 app.use('/api/badges', badgeRoutes);
 app.use('/api/shop', shopRoutes);
 app.use('/api/market', marketRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Rede de segurança: sem isso, um erro em QUALQUER rota (ex: um INSERT que viola uma
 // constraint) derruba o processo inteiro e todo mundo cai junto. Aqui o pedido falha
@@ -83,5 +85,6 @@ const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => {
   console.log(`SafeCord API rodando em http://localhost:${PORT}`);
   console.log(`   Email: ${isSmtpConfigured() ? 'SMTP configurado (ok)' : 'sem SMTP — códigos saem aqui no console'}`);
-  console.log(`   Pagamentos: ${process.env.STRIPE_SECRET_KEY ? 'Stripe configurado (ok)' : 'sem STRIPE_SECRET_KEY — loja em modo vitrine'}`);
+  const payProvider = require('./payments').providerLabel();
+  console.log(`   Pagamentos: ${payProvider ? `${payProvider} configurado (ok)` : 'sem MERCADOPAGO_ACCESS_TOKEN — pagamentos desligados'}`);
 });

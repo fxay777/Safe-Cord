@@ -16,19 +16,16 @@ const {
 
 const router = express.Router();
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-const APP_URL = process.env.APP_URL || 'http://localhost:4000';
+const payments = require('../payments');
+const APP_URL = payments.APP_URL;
 const FEE_PERCENT = Math.min(Math.max(Number(process.env.MARKET_FEE_PERCENT ?? 10), 0), 50);
-// Pagamento simulado, só pra testar a loja localmente sem Stripe. Nunca ativa se houver chave do Stripe.
-const DEV_PAYMENTS = !STRIPE_SECRET_KEY && process.env.MARKET_DEV_PAYMENTS === '1';
+// Pagamento simulado, só pra testar a loja localmente sem provedor. Nunca ativa se o Mercado Pago (ou Stripe) estiver configurado.
+const DEV_PAYMENTS = !payments.provider() && process.env.MARKET_DEV_PAYMENTS === '1';
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
   .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 const RELEASE_DAYS_AFTER_SHIP = 14; // físico enviado e não confirmado: libera o saldo depois disso
 
-let stripe = null;
-if (STRIPE_SECRET_KEY) {
-  try { stripe = require('stripe')(STRIPE_SECRET_KEY); } catch (e) { console.warn('Stripe indisponível no mercado:', e.message); }
-}
+const paymentsOn = () => Boolean(payments.provider());
 
 const MIN_PRICE = 100;        // R$ 1,00
 const MAX_PRICE = 5000000;    // R$ 50.000,00
@@ -206,8 +203,9 @@ router.use(requireAuth);
 router.get('/config', (req, res) => {
   res.json({
     feePercent: FEE_PERCENT,
-    paymentsEnabled: Boolean(stripe) || DEV_PAYMENTS,
+    paymentsEnabled: paymentsOn() || DEV_PAYMENTS,
     devPayments: DEV_PAYMENTS,
+    provider: payments.providerLabel(),
     isAdmin: isAdmin(req.user.id),
     maxDigitalMB: Math.round(MAX_DIGITAL_BYTES / 1024 / 1024),
   });
@@ -487,8 +485,8 @@ router.post('/checkout', async (req, res) => {
     if (typeof address === 'string') return res.status(400).json({ error: address });
   }
 
-  if (!stripe && !DEV_PAYMENTS) {
-    return res.status(503).json({ error: 'Pagamentos indisponíveis: configure STRIPE_SECRET_KEY no .env do servidor.' });
+  if (!paymentsOn() && !DEV_PAYMENTS) {
+    return res.status(503).json({ error: 'Pagamentos indisponíveis: configure MERCADOPAGO_ACCESS_TOKEN no .env do servidor.' });
   }
 
   const subtotal = product.price_cents * quantity;
@@ -498,45 +496,36 @@ router.post('/checkout', async (req, res) => {
   const snapshot = { title: product.title, type: product.type, image: images[0] || null };
   const orderId = uuidv4();
 
-  const insert = (sessionId) => db.prepare(`INSERT INTO orders
+  const insert = (providerRef, providerName) => db.prepare(`INSERT INTO orders
     (id, buyer_id, store_id, product_id, product_snapshot, quantity, unit_price_cents, shipping_cents, total_cents,
-     fee_cents, seller_cents, status, shipping_address, stripe_session_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`)
+     fee_cents, seller_cents, status, shipping_address, stripe_session_id, payment_provider, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`)
     .run(orderId, req.user.id, store.id, product.id, JSON.stringify(snapshot), quantity, product.price_cents, shipping,
-      subtotal + shipping, fee, subtotal - fee + shipping, address ? JSON.stringify(address) : null, sessionId, Date.now());
+      subtotal + shipping, fee, subtotal - fee + shipping, address ? JSON.stringify(address) : null, providerRef, providerName, Date.now());
 
-  if (!stripe) {
-    insert(null);
+  if (!paymentsOn()) {
+    insert(null, 'dev');
     return res.json({ orderId, devPayment: true });
   }
 
   try {
-    const lineItems = [{
-      price_data: {
-        currency: 'brl',
-        unit_amount: product.price_cents,
-        product_data: {
-          name: product.title,
-          description: `Vendido por ${store.name} no SafeCord`,
-          ...(images[0] ? { images: [`${APP_URL}${images[0]}`] } : {}),
-        },
-      },
+    const items = [{
+      title: product.title,
+      description: `Vendido por ${store.name} no SafeCord`,
+      unitCents: product.price_cents,
       quantity,
+      ...(images[0] && APP_URL.startsWith('https://') ? { imageUrl: `${APP_URL}${images[0]}` } : {}),
     }];
-    if (shipping > 0) {
-      lineItems.push({ price_data: { currency: 'brl', unit_amount: shipping, product_data: { name: 'Frete' } }, quantity: 1 });
-    }
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: lineItems,
-      success_url: `${APP_URL}/api/shop/return?status=success`,
-      cancel_url: `${APP_URL}/api/shop/return?status=cancel`,
+    if (shipping > 0) items.push({ title: 'Frete', unitCents: shipping, quantity: 1 });
+    const checkout = await payments.createCheckout({
+      reference: orderId,
+      items,
       metadata: { kind: 'market', orderId, userId: req.user.id },
     });
-    insert(session.id);
-    res.json({ orderId, checkoutUrl: session.url });
+    insert(checkout.providerRef, checkout.provider);
+    res.json({ orderId, checkoutUrl: checkout.url });
   } catch (err) {
-    res.status(502).json({ error: `Stripe recusou a cobrança: ${err.message}` });
+    res.status(502).json({ error: `Não foi possível criar a cobrança: ${err.message}` });
   }
 });
 
@@ -553,10 +542,14 @@ router.post('/orders/:id/dev-pay', (req, res) => {
 router.post('/orders/:id/confirm', async (req, res) => {
   const order = db.prepare('SELECT * FROM orders WHERE id = ? AND buyer_id = ?').get(req.params.id, req.user.id);
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
-  if (order.status === 'pending' && stripe && order.stripe_session_id) {
+  if (order.status === 'pending' && paymentsOn() && order.payment_provider !== 'dev') {
     try {
-      const session = await stripe.checkout.sessions.retrieve(order.stripe_session_id);
-      if (session.payment_status === 'paid') fulfillOrder(order.id, req);
+      const status = await payments.checkStatus({
+        reference: order.id,
+        providerRef: order.stripe_session_id,
+        provider: order.payment_provider || undefined,
+      });
+      if (status === 'paid') fulfillOrder(order.id, req);
     } catch (err) {
       return res.status(502).json({ error: `Não foi possível checar o pagamento: ${err.message}` });
     }
@@ -670,3 +663,8 @@ router.put('/admin/stores/:id/status', requireAdmin, (req, res) => {
 
 module.exports = router;
 module.exports.handleStripeSession = handleStripeSession;
+module.exports.fulfillOrderById = (id, req) => {
+  const exists = db.prepare('SELECT 1 FROM orders WHERE id = ?').get(id);
+  if (exists) fulfillOrder(id, req);
+  return Boolean(exists);
+};

@@ -6,22 +6,11 @@ const { getPublicUser, grantBadge } = require('../userUtils');
 
 const router = express.Router();
 
-// --- Stripe (modo teste) ---
-// A chave vem do .env (STRIPE_SECRET_KEY, use a sk_test_...). Sem chave, a loja continua
-// navegável e as rotas respondem com um erro claro em vez de quebrar o servidor.
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+// --- Pagamentos ---
+// Quem cobra é o módulo ../payments (Mercado Pago; Stripe como alternativa).
+const payments = require('../payments');
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
-const APP_URL = process.env.APP_URL || 'http://localhost:4000';
-
-let stripe = null;
-if (STRIPE_SECRET_KEY) {
-  try {
-    stripe = require('stripe')(STRIPE_SECRET_KEY);
-  } catch (e) {
-    console.warn('Stripe não pôde ser carregado:', e.message);
-  }
-}
-const stripeEnabled = () => Boolean(stripe);
+const stripeEnabled = () => Boolean(payments.provider());
 
 // Catálogo. Assinatura (pro) dá a insígnia de diamante e marca pro_until; as demais dão a insígnia.
 const PRO_DAYS = 30;
@@ -84,7 +73,8 @@ function fulfillPurchase(purchase) {
 // express.json guarda pra gente lá no index.js — por isso esta rota vem antes do requireAuth:
 // quem chama é o Stripe, não um usuário logado.
 router.post('/webhook', async (req, res) => {
-  if (!stripeEnabled()) return res.status(503).json({ error: 'Stripe não configurado' });
+  const stripe = payments.stripeClient();
+  if (!stripe) return res.status(503).json({ error: 'Stripe não configurado' });
 
   let event;
   try {
@@ -120,6 +110,27 @@ router.post('/webhook', async (req, res) => {
   res.json({ received: true });
 });
 
+// Página de volta do checkout: quem abre é o navegador, sem login — por isso vem antes do requireAuth
+router.get('/return', (req, res) => {
+  const state = { success: 'success', pending: 'pending' }[req.query.status] || 'cancel';
+  const view = {
+    success: { color: '#34C77B', title: 'Pagamento concluído!', text: 'Pode fechar esta janela e voltar pro SafeCord — clique em "Já paguei" lá.', icon: '<path d="M5 12.5 10 17.5 19 7"/>' },
+    pending: { color: '#F0B429', title: 'Pagamento em processamento', text: 'Pix e boleto podem levar alguns minutos pra confirmar. Assim que cair, é só clicar em "Já paguei" no SafeCord.', icon: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>' },
+    cancel: { color: '#8C9CB8', title: 'Pagamento não concluído', text: 'Nada foi cobrado. Pode fechar esta janela e tentar de novo no SafeCord.', icon: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/>' },
+  }[state];
+  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SafeCord</title></head>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 40%,#0E1A33 0%,#08101F 45%,#050A14 100%);color:#EEF3FB;font-family:Inter,-apple-system,Segoe UI,Roboto,sans-serif;padding:20px;box-sizing:border-box;">
+  <div style="text-align:center;max-width:400px;padding:32px 28px;background:linear-gradient(180deg,rgba(22,34,58,.75),rgba(12,20,38,.8));border:1px solid rgba(80,150,255,.35);border-radius:22px;box-shadow:0 0 50px rgba(30,123,255,.2);">
+    <div style="margin:0 auto 14px;width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${view.color}22;">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="${view.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${view.icon}</svg>
+    </div>
+    <h1 style="font-size:20px;margin:0 0 8px;">${view.title}</h1>
+    <p style="color:#9FB0CC;font-size:14px;line-height:1.55;margin:0;">${view.text}</p>
+  </div>
+</body></html>`);
+});
+
 router.use(requireAuth);
 
 router.get('/products', (req, res) => {
@@ -130,7 +141,7 @@ router.get('/products', (req, res) => {
     ...p,
     owned: p.kind === 'badge' ? owned.has(p.badge_id) : false,
   }));
-  res.json({ products, stripeEnabled: stripeEnabled() });
+  res.json({ products, stripeEnabled: stripeEnabled(), paymentsEnabled: stripeEnabled(), provider: payments.providerLabel() });
 });
 
 router.get('/purchases', (req, res) => {
@@ -157,34 +168,25 @@ router.post('/checkout', async (req, res) => {
 
   if (!stripeEnabled()) {
     return res.status(503).json({
-      error: 'Pagamentos indisponíveis: configure STRIPE_SECRET_KEY no .env do servidor (use a chave sk_test_ do modo teste).',
+      error: 'Pagamentos indisponíveis: configure MERCADOPAGO_ACCESS_TOKEN no .env do servidor.',
     });
   }
 
   try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: [{
-        price_data: {
-          currency: 'brl',
-          unit_amount: product.amount_cents,
-          product_data: { name: `SafeCord — ${product.name}`, description: product.description },
-        },
-        quantity: 1,
-      }],
-      success_url: `${APP_URL}/api/shop/return?purchase=${purchaseId}&status=success`,
-      cancel_url: `${APP_URL}/api/shop/return?purchase=${purchaseId}&status=cancel`,
-      metadata: { purchaseId, userId: req.user.id, productId: product.id },
+    const checkout = await payments.createCheckout({
+      reference: purchaseId,
+      items: [{ title: `SafeCord — ${product.name}`, description: product.description, unitCents: product.amount_cents, quantity: 1 }],
+      metadata: { kind: 'shop', userId: req.user.id, productId: product.id },
     });
 
     db.prepare(
-      `INSERT INTO purchases (id, user_id, product_id, amount_cents, currency, status, stripe_session_id, created_at)
-       VALUES (?, ?, ?, ?, 'brl', 'pending', ?, ?)`
-    ).run(purchaseId, req.user.id, product.id, product.amount_cents, session.id, Date.now());
+      `INSERT INTO purchases (id, user_id, product_id, amount_cents, currency, status, stripe_session_id, payment_provider, created_at)
+       VALUES (?, ?, ?, ?, 'brl', 'pending', ?, ?, ?)`
+    ).run(purchaseId, req.user.id, product.id, product.amount_cents, checkout.providerRef, checkout.provider, Date.now());
 
-    res.json({ checkoutUrl: session.url, purchaseId });
+    res.json({ checkoutUrl: checkout.url, purchaseId });
   } catch (err) {
-    res.status(502).json({ error: `Stripe recusou a cobrança: ${err.message}` });
+    res.status(502).json({ error: `Não foi possível criar a cobrança: ${err.message}` });
   }
 });
 
@@ -200,10 +202,14 @@ router.post('/purchases/:purchaseId/confirm', async (req, res) => {
     return res.json({ status: 'paid', user: getPublicUser(req.user.id) });
   }
 
-  if (stripeEnabled() && purchase.stripe_session_id) {
+  if (stripeEnabled()) {
     try {
-      const session = await stripe.checkout.sessions.retrieve(purchase.stripe_session_id);
-      if (session.payment_status === 'paid') {
+      const status = await payments.checkStatus({
+        reference: purchase.id,
+        providerRef: purchase.stripe_session_id,
+        provider: purchase.payment_provider || undefined,
+      });
+      if (status === 'paid') {
         fulfillPurchase(purchase);
         return res.json({ status: 'paid', user: getPublicUser(req.user.id) });
       }
@@ -217,23 +223,9 @@ router.post('/purchases/:purchaseId/confirm', async (req, res) => {
 
 // Página simples que o Stripe abre depois do pagamento — o app desktop só precisa
 // que exista algo pra onde voltar.
-router.get('/return', (req, res) => {
-  const ok = req.query.status === 'success';
-  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>SafeCord</title></head>
-<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0B0F14;color:#EAF2F1;font-family:-apple-system,Segoe UI,Roboto,sans-serif;">
-  <div style="text-align:center;max-width:380px;padding:28px;background:#161C25;border:1px solid #262E3B;border-radius:20px;">
-    <div style="margin:0 auto 12px;width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:${ok ? 'rgba(52,211,153,0.14)' : 'rgba(159,176,174,0.12)'};">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="${ok ? '#34D399' : '#9FB0AE'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        ${ok ? '<path d="M5 12.5 10 17.5 19 7"/>' : '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/>'}
-      </svg>
-    </div>
-    <h1 style="font-size:19px;margin:0 0 8px;">${ok ? 'Pagamento concluído!' : 'Compra cancelada'}</h1>
-    <p style="color:#9FB0AE;font-size:13.5px;line-height:1.55;margin:0;">
-      ${ok ? 'Pode fechar esta janela e voltar pro SafeCord — sua compra já está liberada.' : 'Nada foi cobrado. Pode fechar esta janela.'}
-    </p>
-  </div>
-</body></html>`);
-});
-
 module.exports = router;
+module.exports.fulfillPurchaseById = (id) => {
+  const purchase = db.prepare('SELECT * FROM purchases WHERE id = ?').get(id);
+  if (purchase) fulfillPurchase(purchase);
+  return Boolean(purchase);
+};

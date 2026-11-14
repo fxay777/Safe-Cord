@@ -357,6 +357,13 @@ ensureServerColumns();
 ensureChannelColumns();
 ensureFriendshipColumns();
 ensureMessageColumns();
+
+// Qual provedor cobrou ('mercadopago' | 'stripe' | 'dev'). O id da cobrança no provedor
+// continua na coluna stripe_session_id (nome antigo, mantido pra não perder dados).
+for (const table of ['purchases', 'orders']) {
+  const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+  if (!cols.has('payment_provider')) db.exec(`ALTER TABLE ${table} ADD COLUMN payment_provider TEXT`);
+}
 ensureConversationColumns();
 
 // Ninguém está conectado quando o servidor acaba de subir. Sem isso, quem estava online

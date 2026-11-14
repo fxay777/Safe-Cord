@@ -117,8 +117,8 @@ export default function ShopModal({ api, user, onClose, onUserUpdated }) {
           {/* avisos */}
           {!stripeEnabled && tab === 'loja' && (
             <div style={styles.notice}>
-              <strong>Pagamentos desligados.</strong> Coloque a chave de teste do Stripe
-              (<code style={styles.code}>STRIPE_SECRET_KEY=sk_test_…</code>) em <code style={styles.code}>server/.env</code> e reinicie o servidor.
+              <strong>Pagamentos desligados.</strong> Coloque o Access Token do Mercado Pago
+              (<code style={styles.code}>MERCADOPAGO_ACCESS_TOKEN=TEST-…</code>) em <code style={styles.code}>server/.env</code> e reinicie o servidor.
             </div>
           )}
           {pendingPurchase && (

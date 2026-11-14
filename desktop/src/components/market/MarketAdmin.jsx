@@ -75,7 +75,7 @@ export default function MarketAdmin({ api, refreshKey }) {
         </div>
       </div>
       <div style={st.note}>
-        O dinheiro das vendas cai na conta Stripe do SafeCord. Pague cada loja pela chave Pix dela e clique em
+        O dinheiro das vendas cai na conta do Mercado Pago do SafeCord. Pague cada loja pela chave Pix dela e clique em
         "Registrar repasse" — isso zera o saldo liberado e avisa o vendedor.
       </div>
 
