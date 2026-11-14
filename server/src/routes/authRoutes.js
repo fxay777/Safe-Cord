@@ -5,10 +5,7 @@ const db = require('../db');
 const { signToken, requireAuth } = require('../auth');
 const { effectiveStatus } = require('../statusUtils');
 const { sendVerificationEmail, isSmtpConfigured } = require('../mailer');
-const {
-  PUBLIC_USER_COLUMNS, parseUserRow, getPublicUser,
-  grantBadge, generateUniqueTag,
-} = require('../userUtils');
+const { PUBLIC_USER_COLUMNS, parseUserRow, getPublicUser, grantBadge, generateUniqueTag, getProfileForOthers, relatedUserIds } = require('../userUtils');
 
 const router = express.Router();
 
@@ -235,7 +232,8 @@ router.put('/me/email', requireAuth, async (req, res) => {
 // (POST /api/uploads/avatar e /api/uploads/banner) porque envolvem processamento
 // de imagem (multer + sharp) — não fazem sentido como string JSON.
 router.put('/me/profile', requireAuth, (req, res) => {
-  const { display_name, bio, avatar_color, spotify_track, connections } = req.body || {};
+  const { display_name, bio, avatar_color, spotify_track, connections, pronouns, status_text, theme_primary, theme_secondary } = req.body || {};
+  const isHex = (v) => typeof v === 'string' && /^#[0-9A-Fa-f]{6}$/.test(v);
 
   const safeDisplayName = typeof display_name === 'string' ? display_name.trim().slice(0, 40) : '';
   const safeBio = typeof bio === 'string' ? bio.trim().slice(0, 220) : '';
@@ -245,12 +243,18 @@ router.put('/me/profile', requireAuth, (req, res) => {
   const safeSpotifyTrack = spotify_track !== undefined ? sanitizeSpotifyTrack(spotify_track) : undefined;
   const safeConnections = connections !== undefined ? JSON.stringify(sanitizeConnections(connections)) : undefined;
 
-  const current = db.prepare('SELECT spotify_track, connections FROM users WHERE id = ?').get(req.user.id);
+  const current = db.prepare('SELECT spotify_track, connections, pronouns, status_text, theme_primary, theme_secondary FROM users WHERE id = ?').get(req.user.id);
+  const safePronouns = typeof pronouns === 'string' ? pronouns.trim().slice(0, 24) : current.pronouns;
+  const safeStatusText = typeof status_text === 'string' ? status_text.trim().slice(0, 80) : current.status_text;
+  // null limpa o tema; cor inválida mantém a anterior
+  const pickTheme = (value, prev) => (value === null ? null : isHex(value) ? value : prev);
+  const safeThemePrimary = theme_primary !== undefined ? pickTheme(theme_primary, current.theme_primary) : current.theme_primary;
+  const safeThemeSecondary = theme_secondary !== undefined ? pickTheme(theme_secondary, current.theme_secondary) : current.theme_secondary;
 
   db.prepare(
     `UPDATE users
      SET display_name = ?, bio = ?, avatar_color = COALESCE(?, avatar_color),
-         spotify_track = ?, connections = ?
+         spotify_track = ?, connections = ?, pronouns = ?, status_text = ?, theme_primary = ?, theme_secondary = ?
      WHERE id = ?`
   ).run(
     safeDisplayName,
@@ -258,10 +262,22 @@ router.put('/me/profile', requireAuth, (req, res) => {
     safeAvatarColor,
     safeSpotifyTrack !== undefined ? (safeSpotifyTrack ? JSON.stringify(safeSpotifyTrack) : null) : current.spotify_track,
     safeConnections !== undefined ? safeConnections : current.connections,
+    safePronouns,
+    safeStatusText,
+    safeThemePrimary,
+    safeThemeSecondary,
     req.user.id
   );
 
-  res.json({ user: getPublicUser(req.user.id) });
+  const updated = getPublicUser(req.user.id);
+  // Avisa SÓ quem tem relação com você (amigos, quem divide servidor/conversa) e SEM o email.
+  const io = req.app.get('io');
+  if (io) {
+    const others = getProfileForOthers(req.user.id);
+    const rooms = [...relatedUserIds(req.user.id)].map((id) => `user:${id}`);
+    if (rooms.length) io.to(rooms).emit('user:updated', { user: others });
+  }
+  res.json({ user: updated });
 });
 
 // Muda o status de presença escolhido (online/ausente/não incomodar/invisível) e avisa

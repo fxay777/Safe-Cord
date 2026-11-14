@@ -18,7 +18,7 @@ function lastSeenLabel(ts) {
   return 'Visto há muito tempo';
 }
 
-export default function MemberList({ members, ownerId }) {
+export default function MemberList({ members, ownerId, onOpenProfile }) {
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const [showOffline, setShowOffline] = useState(true);
@@ -71,15 +71,15 @@ export default function MemberList({ members, ownerId }) {
       )}
 
       <div style={styles.list}>
-        <Group title={`Online — ${online.length}`} dotColor="var(--success)" members={online} ownerId={ownerId} />
-        {showOffline && <Group title={`Offline — ${offline.length}`} dotColor="var(--text-low)" members={offline} ownerId={ownerId} dim />}
+        <Group title={`Online — ${online.length}`} dotColor="var(--success)" members={online} ownerId={ownerId} onOpenProfile={onOpenProfile} />
+        {showOffline && <Group title={`Offline — ${offline.length}`} dotColor="var(--text-low)" members={offline} ownerId={ownerId} dim onOpenProfile={onOpenProfile} />}
         {q && online.length === 0 && offline.length === 0 && <div style={styles.empty}>Ninguém com esse nome.</div>}
       </div>
     </div>
   );
 }
 
-function Group({ title, dotColor, members, ownerId, dim }) {
+function Group({ title, dotColor, members, ownerId, dim, onOpenProfile }) {
   if (members.length === 0) return null;
   return (
     <div style={{ marginBottom: 14 }}>
@@ -92,10 +92,19 @@ function Group({ title, dotColor, members, ownerId, dim }) {
         const meta = statusMeta(m.status);
         const subtitle = dim
           ? lastSeenLabel(m.last_seen_at)
-          : (m.bio ? m.bio.split('\n')[0] : meta.label);
+          : (m.status_text || meta.label);
 
         return (
-          <div key={m.id} className="sc-member-row" style={styles.row}>
+          <div
+            key={m.id}
+            className="sc-member-row"
+            style={{ ...styles.row, cursor: onOpenProfile ? 'pointer' : 'default' }}
+            role={onOpenProfile ? 'button' : undefined}
+            tabIndex={onOpenProfile ? 0 : undefined}
+            data-member-id={m.id}
+            onClick={(e) => onOpenProfile?.(m.id, e.currentTarget.getBoundingClientRect(), m)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onOpenProfile?.(m.id, e.currentTarget.getBoundingClientRect(), m); }}
+          >
             <div style={styles.avatarWrap}>
               {m.avatar_url ? (
                 <img src={resolveAssetUrl(m.avatar_url)} alt={displayName} style={{ ...styles.avatarImg, opacity: dim ? 0.55 : 1 }} />

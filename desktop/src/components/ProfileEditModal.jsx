@@ -1,26 +1,32 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { resolveAssetUrl } from '../api';
 import {
-  CameraIcon, MusicIcon, LinkIcon, TrashIcon, CheckIcon, CloseIcon, UserIcon, SearchIcon,
-  GameControllerIcon, GithubIcon, DiceIcon, TwitchIcon,
-  PlayCircleIcon, CameraSquareIcon, TikTokIcon, GlobeIcon,
+  CameraIcon, MusicIcon, LinkIcon, TrashIcon, CheckIcon, CloseIcon, UserIcon, SearchIcon, PaletteIcon,
 } from './Icons';
 import { SpotifyMiniCard } from './UserProfilePopup';
-import BadgeRow from './BadgeRow';
-
-function XLogoIcon({ size = 16, ...props }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
-      <path d="M4 4l16 16M20 4 4 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
+import { PLATFORMS, platformMeta } from './profilePlatforms';
+import ProfileCard from './ProfileCard';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
 const NAME_MAX = 40;
 const BIO_MAX = 220;
 const MAX_CONNECTIONS = 6;
+const PRONOUNS_MAX = 24;
+const STATUS_MAX = 80;
+const PRONOUN_SUGGESTIONS = ['ele/dele', 'ela/dela', 'elu/delu', 'qualquer pronome'];
+
+// Temas prontos do cartão de perfil (degradê de cima para baixo)
+const THEME_PRESETS = [
+  { name: 'Céu', primary: '#7CC4FF', secondary: '#1E7BFF' },
+  { name: 'Aurora', primary: '#4CD6A0', secondary: '#5B8CFF' },
+  { name: 'Pôr do sol', primary: '#FFC857', secondary: '#FF7EB6' },
+  { name: 'Uva', primary: '#B794FF', secondary: '#5B3FD6' },
+  { name: 'Brasa', primary: '#FF8A65', secondary: '#C2185B' },
+  { name: 'Menta', primary: '#A8F0D8', secondary: '#2EC4C4' },
+  { name: 'Noite', primary: '#3B4A6B', secondary: '#0E1424' },
+  { name: 'Algodão', primary: '#FFD6E8', secondary: '#C9E4FF' },
+];
 
 // Paleta do perfil: tons que combinam com o azul claro do app, mais algumas cores vivas
 const PROFILE_COLORS = [
@@ -28,27 +34,14 @@ const PROFILE_COLORS = [
   '#FF7EB6', '#FF8A65', '#FFC857', '#4CD6A0', '#2EC4C4',
 ];
 
-const PLATFORMS = [
-  { id: 'discord', label: 'Discord', Icon: GameControllerIcon, placeholder: 'usuario#0000', color: '#5865F2' },
-  { id: 'x', label: 'X / Twitter', Icon: XLogoIcon, placeholder: '@usuario', color: '#8899A6' },
-  { id: 'instagram', label: 'Instagram', Icon: CameraSquareIcon, placeholder: '@usuario', color: '#E1306C' },
-  { id: 'youtube', label: 'YouTube', Icon: PlayCircleIcon, placeholder: '@canal', color: '#FF3B30' },
-  { id: 'twitch', label: 'Twitch', Icon: TwitchIcon, placeholder: 'usuario', color: '#9146FF' },
-  { id: 'github', label: 'GitHub', Icon: GithubIcon, placeholder: 'usuario', color: '#8B949E' },
-  { id: 'steam', label: 'Steam', Icon: DiceIcon, placeholder: 'usuario', color: '#66C0F4' },
-  { id: 'tiktok', label: 'TikTok', Icon: TikTokIcon, placeholder: '@usuario', color: '#25C4BE' },
-  { id: 'site', label: 'Site', Icon: GlobeIcon, placeholder: 'https://...', color: '#3A9BFF' },
-];
 
 const TABS = [
   { id: 'perfil', label: 'Perfil', Icon: UserIcon },
   { id: 'musica', label: 'Música', Icon: MusicIcon },
+  { id: 'tema', label: 'Tema', Icon: PaletteIcon },
   { id: 'conexoes', label: 'Conexões', Icon: LinkIcon },
 ];
 
-function platformMeta(id) {
-  return PLATFORMS.find((p) => p.id === id) || PLATFORMS[PLATFORMS.length - 1];
-}
 
 function draftFrom(user, fallbackColor) {
   return {
@@ -57,6 +50,10 @@ function draftFrom(user, fallbackColor) {
     avatar_color: user?.avatar_color || fallbackColor,
     spotify_track: user?.spotify_track || null,
     connections: user?.connections ? [...user.connections] : [],
+    pronouns: user?.pronouns || '',
+    status_text: user?.status_text || '',
+    theme_primary: user?.theme_primary || null,
+    theme_secondary: user?.theme_secondary || null,
   };
 }
 
@@ -192,6 +189,10 @@ export default function ProfileEditModal({
         avatar_color: draft.avatar_color,
         spotify_track: draft.spotify_track,
         connections: draft.connections,
+        pronouns: draft.pronouns.trim(),
+        status_text: draft.status_text.trim(),
+        theme_primary: draft.theme_primary,
+        theme_secondary: draft.theme_secondary,
       });
       onClose();
     } catch (err) {
@@ -200,6 +201,15 @@ export default function ProfileEditModal({
       setSaving(false);
     }
   }
+
+  const previewUser = {
+    ...user,
+    ...draft,
+    display_name: shownName,
+    avatar_url: shownAvatar,
+    banner_url: shownBanner,
+    status_mode: user?.status_mode === 'invisible' ? 'invisible' : (user?.status_mode || 'online'),
+  };
 
   const bannerStyle = shownBanner
     ? { backgroundImage: `url(${shownBanner})`, backgroundSize: 'cover', backgroundPosition: 'center' }
@@ -275,14 +285,46 @@ export default function ProfileEditModal({
                   {imageError && <div style={styles.errorBox}>{imageError}</div>}
                 </Section>
 
-                <Section title="Nome de exibição" counter={`${draft.display_name.length}/${NAME_MAX}`}>
-                  <input
-                    value={draft.display_name}
-                    onChange={(e) => setDraft((prev) => ({ ...prev, display_name: e.target.value }))}
-                    style={styles.input}
-                    placeholder={user?.username || 'Seu nome'}
-                    maxLength={NAME_MAX}
-                  />
+                <div style={styles.twoCol}>
+                  <Section title="Nome de exibição" counter={`${draft.display_name.length}/${NAME_MAX}`}>
+                    <input
+                      value={draft.display_name}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, display_name: e.target.value }))}
+                      style={styles.input}
+                      placeholder={user?.username || 'Seu nome'}
+                      maxLength={NAME_MAX}
+                    />
+                  </Section>
+                  <Section title="Pronomes" counter={`${draft.pronouns.length}/${PRONOUNS_MAX}`}>
+                    <input
+                      value={draft.pronouns}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, pronouns: e.target.value }))}
+                      style={styles.input}
+                      placeholder="ex.: ele/dele"
+                      maxLength={PRONOUNS_MAX}
+                      list="sc-pronoun-suggestions"
+                    />
+                    <datalist id="sc-pronoun-suggestions">
+                      {PRONOUN_SUGGESTIONS.map((p) => <option key={p} value={p} />)}
+                    </datalist>
+                  </Section>
+                </div>
+
+                <Section title="Recado" hint="Uma frase curta que aparece no seu cartão e embaixo do seu nome na lista de membros." counter={`${draft.status_text.length}/${STATUS_MAX}`}>
+                  <div style={styles.statusField}>
+                    <input
+                      value={draft.status_text}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, status_text: e.target.value }))}
+                      style={{ ...styles.input, paddingRight: 40 }}
+                      placeholder="No que você está pensando?"
+                      maxLength={STATUS_MAX}
+                    />
+                    {draft.status_text && (
+                      <button type="button" style={styles.clearInputBtn} title="Limpar" onClick={() => setDraft((prev) => ({ ...prev, status_text: '' }))}>
+                        <CloseIcon size={12} />
+                      </button>
+                    )}
+                  </div>
                 </Section>
 
                 <Section title="Sobre mim" counter={`${draft.bio.length}/${BIO_MAX}`}>
@@ -385,6 +427,60 @@ export default function ProfileEditModal({
               </Section>
             )}
 
+            {tab === 'tema' && (
+              <>
+                <Section title="Tema do perfil" hint="Pinta o seu cartão inteiro com um degradê. Todo mundo que abrir seu perfil vê.">
+                  <div style={styles.themeGrid}>
+                    <button
+                      type="button"
+                      onClick={() => setDraft((prev) => ({ ...prev, theme_primary: null, theme_secondary: null }))}
+                      style={{ ...styles.themeTile, ...(!draft.theme_primary && !draft.theme_secondary ? styles.themeTileActive : {}) }}
+                    >
+                      <span style={{ ...styles.themeSwatch, background: 'var(--bg-elevated)', border: '1px dashed var(--border-strong, var(--border))' }} />
+                      <span style={styles.themeName}>Sem tema</span>
+                    </button>
+                    {THEME_PRESETS.map((t) => {
+                      const active = draft.theme_primary?.toLowerCase() === t.primary.toLowerCase()
+                        && draft.theme_secondary?.toLowerCase() === t.secondary.toLowerCase();
+                      return (
+                        <button
+                          key={t.name}
+                          type="button"
+                          onClick={() => setDraft((prev) => ({ ...prev, theme_primary: t.primary, theme_secondary: t.secondary }))}
+                          style={{ ...styles.themeTile, ...(active ? styles.themeTileActive : {}) }}
+                        >
+                          <span style={{ ...styles.themeSwatch, background: `linear-gradient(180deg, ${t.primary}, ${t.secondary})` }}>
+                            {active && <CheckIcon size={14} style={{ color: '#fff' }} />}
+                          </span>
+                          <span style={styles.themeName}>{t.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Section>
+
+                <Section title="Personalizado" hint="Escolha as duas cores do degradê.">
+                  <div style={styles.twoCol}>
+                    {[['theme_primary', 'Cor de cima'], ['theme_secondary', 'Cor de baixo']].map(([key, label]) => (
+                      <label key={key} style={styles.colorPick}>
+                        <span style={{ ...styles.colorPickDot, background: draft[key] || 'var(--bg-elevated)' }} />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={styles.colorPickLabel}>{label}</span>
+                          <span style={styles.colorPickValue}>{draft[key] ? draft[key].toUpperCase() : 'Nenhuma'}</span>
+                        </span>
+                        <input
+                          type="color"
+                          value={draft[key] || draft.theme_primary || draft.theme_secondary || '#3A9BFF'}
+                          onChange={(e) => setDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                          style={styles.hiddenColorInput}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </Section>
+              </>
+            )}
+
             {tab === 'conexoes' && (
               <>
                 <Section title="Adicionar conta" hint={`Até ${MAX_CONNECTIONS} contas aparecem no seu perfil.`}>
@@ -459,61 +555,10 @@ export default function ProfileEditModal({
             <button type="button" style={styles.closeBtn} onClick={onClose} aria-label="Fechar"><CloseIcon size={16} /></button>
           </div>
 
-          <div style={styles.profileCard}>
-            <div style={{ ...styles.profileBanner, ...bannerStyle }} />
-            <div style={styles.profileAvatarWrap}>
-              {shownAvatar ? (
-                <img src={shownAvatar} alt="" style={styles.profileAvatar} />
-              ) : (
-                <div style={{ ...styles.profileAvatar, ...styles.initials, fontSize: 28, background: draft.avatar_color }}>{initials}</div>
-              )}
-              <span style={styles.profileStatus} />
-            </div>
-
-            <div style={styles.profileBody}>
-              <div style={styles.profileName}>{shownName}</div>
-              <div style={styles.profileHandleRow}>
-                <span style={styles.profileHandle}>{user?.username}#{user?.tag}</span>
-                <BadgeRow badges={user?.badges} size={18} />
-              </div>
-
-              {(draft.bio || draft.spotify_track || draft.connections.length > 0) && <div style={styles.profileDivider} />}
-
-              {draft.bio && (
-                <div style={styles.profileBlock}>
-                  <div style={styles.profileBlockTitle}>Sobre mim</div>
-                  <div style={styles.profileBio}>{draft.bio}</div>
-                </div>
-              )}
-
-              {draft.spotify_track && (
-                <div style={styles.profileBlock}>
-                  <div style={styles.profileBlockTitle}>Ouvindo</div>
-                  <SpotifyMiniCard track={draft.spotify_track} compact />
-                </div>
-              )}
-
-              {draft.connections.length > 0 && (
-                <div style={styles.profileBlock}>
-                  <div style={styles.profileBlockTitle}>Conexões</div>
-                  <div style={styles.profileConns}>
-                    {draft.connections.map((c, i) => {
-                      const meta = platformMeta(c.platform);
-                      return (
-                        <span key={`${c.platform}-${i}`} style={styles.profileConn}>
-                          <meta.Icon size={13} style={{ color: meta.color }} /> {c.label}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {!draft.bio && !draft.spotify_track && draft.connections.length === 0 && (
-                <div style={styles.profileEmpty}>Adicione uma bio, música ou conexões pra deixar seu perfil com a sua cara.</div>
-              )}
-            </div>
-          </div>
+          <ProfileCard user={previewUser} width="100%" />
+          {!draft.bio && !draft.spotify_track && draft.connections.length === 0 && !draft.status_text && (
+            <div style={styles.profileEmpty}>Adicione uma bio, um recado, música ou conexões pra deixar seu perfil com a sua cara.</div>
+          )}
         </div>
 
         {/* ── BARRA DE ALTERAÇÕES NÃO SALVAS ───────────────── */}
@@ -615,6 +660,31 @@ const styles = {
     fontFamily: 'inherit', resize: 'none', outline: 'none',
   },
 
+  twoCol: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
+  statusField: { position: 'relative' },
+  clearInputBtn: {
+    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', width: 22, height: 22, borderRadius: 11,
+    border: 'none', background: 'var(--bg-hover)', color: 'var(--text-mid)', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  themeGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 },
+  themeTile: {
+    display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-base)', border: '2px solid transparent',
+    borderRadius: 16, padding: 8, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+  },
+  themeTileActive: { border: '2px solid var(--accent)' },
+  themeSwatch: {
+    width: 34, height: 34, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxSizing: 'border-box',
+  },
+  themeName: { fontSize: 12.5, fontWeight: 600, color: 'var(--text-hi)' },
+  colorPick: {
+    position: 'relative', display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-base)',
+    border: '1px solid var(--border)', borderRadius: 16, padding: 10, cursor: 'pointer',
+  },
+  colorPickDot: { width: 30, height: 30, borderRadius: 10, flexShrink: 0, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' },
+  colorPickLabel: { display: 'block', fontSize: 12.5, fontWeight: 650, color: 'var(--text-hi)' },
+  colorPickValue: { display: 'block', fontSize: 11.5, color: 'var(--text-low)', fontFamily: 'ui-monospace, monospace' },
   colorRow: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   swatch: {
     width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: 'pointer', color: '#fff',
@@ -669,7 +739,7 @@ const styles = {
     display: 'flex', alignItems: 'center', gap: 9, background: 'var(--bg-base)', border: '2px solid transparent',
     borderRadius: 16, padding: '8px 10px', cursor: 'pointer', textAlign: 'left',
   },
-  platformTileActive: { borderColor: 'var(--accent)' },
+  platformTileActive: { border: '2px solid var(--accent)' },
   platformIcon: {
     width: 30, height: 30, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },

@@ -18,6 +18,7 @@ const badgeRoutes = require('./routes/badgeRoutes');
 const shopRoutes = require('./routes/shopRoutes');
 const marketRoutes = require('./routes/marketRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const userRoutes = require('./routes/userRoutes');
 const { attachRealtime } = require('./realtime');
 const { isSmtpConfigured } = require('./mailer');
 
@@ -55,6 +56,7 @@ app.use('/api/badges', badgeRoutes);
 app.use('/api/shop', shopRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/users', userRoutes);
 
 // Rede de segurança: sem isso, um erro em QUALQUER rota (ex: um INSERT que viola uma
 // constraint) derruba o processo inteiro e todo mundo cai junto. Aqui o pedido falha

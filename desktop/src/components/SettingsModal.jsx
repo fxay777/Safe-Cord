@@ -601,7 +601,7 @@ const styles = {
     background: 'var(--bg-base)', border: '2px solid transparent', borderRadius: 18, padding: 8,
     cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left',
   },
-  modeCardActive: { borderColor: 'var(--accent)' },
+  modeCardActive: { border: '2px solid var(--accent)' },
   modePreview: { position: 'relative', height: 74, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' },
   modeLabelRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text-hi)', padding: '0 4px 2px' },
   modeRadio: { width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--text-low)', flexShrink: 0 },

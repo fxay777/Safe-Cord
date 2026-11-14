@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth } = require('../auth');
-const { requireServerPermission } = require('../permissions');
+const { getEffectivePermissions, requireServerPermission } = require('../permissions');
 const { effectiveStatus } = require('../statusUtils');
 
 const router = express.Router();
@@ -74,6 +74,9 @@ router.post('/join', (req, res) => {
   const server = db.prepare('SELECT * FROM servers WHERE invite_code = ?').get(inviteCode);
   if (!server) return res.status(404).json({ error: 'Convite inválido' });
 
+  const banned = db.prepare('SELECT 1 FROM server_bans WHERE server_id = ? AND user_id = ?').get(server.id, req.user.id);
+  if (banned) return res.status(403).json({ error: 'Você foi banido deste servidor' });
+
   const already = db
     .prepare('SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?')
     .get(server.id, req.user.id);
@@ -106,6 +109,79 @@ router.post('/:serverId/leave', (req, res) => {
   });
   tx();
 
+  res.json({ ok: true });
+});
+
+// ─── Moderação: expulsar e banir ────────────────────────────────────────────
+// Regras: ninguém mexe no dono nem em si mesmo; quem não é dono não mexe em outro moderador
+// (quem também pode banir ou gerenciar o servidor).
+function checkModerationTarget(req, res) {
+  const server = db.prepare('SELECT * FROM servers WHERE id = ?').get(req.params.serverId);
+  if (!server) { res.status(404).json({ error: 'Servidor não encontrado' }); return null; }
+  const targetId = req.params.userId;
+  if (targetId === req.user.id) { res.status(400).json({ error: 'Você não pode fazer isso com você mesmo' }); return null; }
+  if (targetId === server.owner_id) { res.status(403).json({ error: 'Ninguém pode expulsar ou banir o dono' }); return null; }
+  if (server.owner_id !== req.user.id) {
+    const target = getEffectivePermissions(server.id, targetId);
+    if (target.permissions.includes('banir_membros') || target.permissions.includes('gerenciar_servidor')) {
+      res.status(403).json({ error: 'Só o dono pode expulsar ou banir outro moderador' });
+      return null;
+    }
+  }
+  return server;
+}
+
+function removeMember(serverId, userId) {
+  db.transaction(() => {
+    db.prepare('DELETE FROM server_members WHERE server_id = ? AND user_id = ?').run(serverId, userId);
+    db.prepare('DELETE FROM member_roles WHERE server_id = ? AND user_id = ?').run(serverId, userId);
+  })();
+}
+
+function notifyRemoved(req, serverId, userId, kind) {
+  const io = req.app.get('io');
+  io?.to(`user:${userId}`).emit('server:removed', { serverId, kind });
+  io?.to(`server:${serverId}`).emit('server:member-removed', { serverId, userId });
+}
+
+router.post('/:serverId/members/:userId/kick', requireServerPermission('banir_membros'), (req, res) => {
+  const server = checkModerationTarget(req, res);
+  if (!server) return;
+  const isMember = db.prepare('SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?').get(server.id, req.params.userId);
+  if (!isMember) return res.status(404).json({ error: 'Essa pessoa não está no servidor' });
+  removeMember(server.id, req.params.userId);
+  notifyRemoved(req, server.id, req.params.userId, 'kick');
+  res.json({ ok: true });
+});
+
+router.post('/:serverId/members/:userId/ban', requireServerPermission('banir_membros'), (req, res) => {
+  const server = checkModerationTarget(req, res);
+  if (!server) return;
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.userId);
+  if (!target) return res.status(404).json({ error: 'Usuário não encontrado' });
+  const reason = String(req.body?.reason || '').trim().slice(0, 200);
+  db.prepare(`INSERT INTO server_bans (server_id, user_id, reason, banned_by, created_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(server_id, user_id) DO UPDATE SET reason = excluded.reason, banned_by = excluded.banned_by, created_at = excluded.created_at`)
+    .run(server.id, target.id, reason, req.user.id, Date.now());
+  removeMember(server.id, target.id);
+  notifyRemoved(req, server.id, target.id, 'ban');
+  res.json({ ok: true });
+});
+
+router.get('/:serverId/bans', requireServerPermission('banir_membros'), (req, res) => {
+  const rows = db.prepare(
+    `SELECT b.user_id, b.reason, b.created_at, b.banned_by,
+            u.username, u.tag, u.display_name, u.avatar_url, u.avatar_color,
+            m.username AS mod_username, m.display_name AS mod_display_name
+     FROM server_bans b JOIN users u ON u.id = b.user_id LEFT JOIN users m ON m.id = b.banned_by
+     WHERE b.server_id = ? ORDER BY b.created_at DESC`
+  ).all(req.params.serverId);
+  res.json({ bans: rows });
+});
+
+router.delete('/:serverId/bans/:userId', requireServerPermission('banir_membros'), (req, res) => {
+  const r = db.prepare('DELETE FROM server_bans WHERE server_id = ? AND user_id = ?').run(req.params.serverId, req.params.userId);
+  if (!r.changes) return res.status(404).json({ error: 'Esse usuário não está banido' });
   res.json({ ok: true });
 });
 
@@ -160,7 +236,8 @@ router.get('/:serverId/members', (req, res) => {
 
   const members = db
     .prepare(
-      `SELECT u.id, u.username, u.tag, u.avatar_color, u.display_name, u.avatar_url, u.banner_url, u.bio, u.status, u.status_mode, u.last_seen_at
+      `SELECT u.id, u.username, u.tag, u.avatar_color, u.display_name, u.avatar_url, u.banner_url, u.bio, u.status, u.status_mode, u.last_seen_at,
+              u.pronouns, u.status_text, u.theme_primary, u.theme_secondary, m.joined_at
        FROM server_members m JOIN users u ON u.id = m.user_id
        WHERE m.server_id = ?`
     )

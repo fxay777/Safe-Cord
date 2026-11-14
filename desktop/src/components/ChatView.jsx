@@ -9,6 +9,7 @@ import { EmptyChannelArt, EmptyMessagesArt } from './EmptyStateArt';
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB: cobre imagem e vídeo curto
 
 export default function ChatView({
+  onOpenProfile,
   channel,
   messages = [],
   onSend,
@@ -24,6 +25,15 @@ export default function ChatView({
   onUpdateTopic,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+
+  function openAuthor(m, e) {
+    if (!onOpenProfile || !m.author_id) return;
+    e.stopPropagation();
+    onOpenProfile(m.author_id, e.currentTarget.getBoundingClientRect(), {
+      id: m.author_id, username: m.username, display_name: m.display_name, avatar_url: m.avatar_url,
+      avatar_color: m.avatar_color, badges: m.badges,
+    });
+  }
   const [topicDraft, setTopicDraft] = useState(null); // null = não está editando
   const [inviteCopied, setInviteCopied] = useState(false);
   const [text, setText] = useState('');
@@ -309,9 +319,9 @@ export default function ChatView({
                 >
                   {!grouped ? (
                     m.avatar_url ? (
-                      <img src={resolveAssetUrl(m.avatar_url)} alt={authorName} style={styles.avatarImage} />
+                      <img src={resolveAssetUrl(m.avatar_url)} alt={authorName} style={{ ...styles.avatarImage, cursor: onOpenProfile ? 'pointer' : undefined }} onClick={(e) => openAuthor(m, e)} />
                     ) : (
-                      <div style={styles.avatar(m.avatar_color)}>
+                      <div style={{ ...styles.avatar(m.avatar_color), cursor: onOpenProfile ? 'pointer' : undefined }} onClick={(e) => openAuthor(m, e)}>
                         {initials || '?'}
                       </div>
                     )
@@ -324,7 +334,7 @@ export default function ChatView({
                   <div style={styles.messageBody}>
                     {!grouped && (
                       <div style={styles.authorLine}>
-                        <span style={styles.author}>
+                        <span style={styles.author} className={onOpenProfile ? 'sc-clickable-author' : undefined} data-author-id={m.author_id} onClick={(e) => openAuthor(m, e)}>
                           {authorName}
                         </span>
 

@@ -1,7 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import GroupPanel from './GroupPanel';
-import RoleManager from './RoleManager';
-import MemberRoleManager from './MemberRoleManager';
 import UserBar from './UserBar';
 import VoiceBar from './VoiceBar';
 import { TrashIcon, SpeakerIcon, GearIcon, CheckIcon, HashIcon, ChevronDownIcon, UserPlusIcon, ImageIcon, PlusIcon, UsersIcon } from './Icons';
@@ -81,9 +78,8 @@ export default function ChannelSidebar({
   onLeaveVoice,
   onUploadServerImage,
   onRemoveServerImage,
+  onOpenServerSettings,
 }) {
-  const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState('geral');
   const [collapsedCategories, setCollapsedCategories] = useState(() => new Set());
   const [newChannelFor, setNewChannelFor] = useState(null); // null | 'root' | categoryId
   const [newChannelName, setNewChannelName] = useState('');
@@ -239,7 +235,7 @@ export default function ChannelSidebar({
         server={server}
         canManage={canManageServer}
         canOpenSettings={canOpenSettings}
-        onOpenSettings={() => setServerSettingsOpen(true)}
+        onOpenSettings={() => onOpenServerSettings?.('overview')}
         onUploadServerImage={onUploadServerImage}
         onRemoveServerImage={onRemoveServerImage}
       />
@@ -328,70 +324,6 @@ export default function ChannelSidebar({
         onOpenAccounts={onOpenAccounts}
       />
 
-      {serverSettingsOpen && (
-        <div style={styles.modalOverlay} onClick={() => setServerSettingsOpen(false)}>
-          <div style={styles.serverSettingsCard} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h3 style={styles.modalTitle}>Configurações do servidor</h3>
-              <button type="button" style={styles.closeBtn} onClick={() => setServerSettingsOpen(false)}>×</button>
-            </div>
-
-            <div style={styles.settingsBody}>
-              <div style={styles.settingsSidebar}>
-                <button type="button" style={settingsTab === 'geral' ? styles.settingsTabActive : styles.settingsTab} onClick={() => setSettingsTab('geral')}>Geral</button>
-                <button type="button" style={settingsTab === 'membros' ? styles.settingsTabActive : styles.settingsTab} onClick={() => setSettingsTab('membros')}>Membros</button>
-                <button type="button" style={settingsTab === 'cargos' ? styles.settingsTabActive : styles.settingsTab} onClick={() => setSettingsTab('cargos')}>Cargos</button>
-                <button type="button" style={settingsTab === 'grupos' ? styles.settingsTabActive : styles.settingsTab} onClick={() => setSettingsTab('grupos')}>Grupos</button>
-              </div>
-
-              <div style={styles.settingsContent}>
-                {settingsTab === 'geral' && (
-                  <GeneralSettingsForm
-                    server={server}
-                    categories={categories}
-                    canManage={canManageServer}
-                    onUpdateServer={onUpdateServer}
-                    onRegenerateInvite={onRegenerateInvite}
-                    themeAccent={themeAccent}
-                    isOwner={isServerOwner}
-                    onDeleteServer={onDeleteServer}
-                    onLeaveServer={onLeaveServer}
-                    onCloseSettings={() => setServerSettingsOpen(false)}
-                  />
-                )}
-                {settingsTab === 'membros' && (
-                  <MemberRoleManager
-                    members={members}
-                    roles={roles}
-                    canManage={canManageMembers}
-                    onAssignRoles={onAssignMemberRoles}
-                  />
-                )}
-                {settingsTab === 'cargos' && (
-                  <RoleManager
-                    roles={roles}
-                    canManage={canManageRoles}
-                    onCreateRole={onCreateRole}
-                    onUpdateRole={onUpdateRole}
-                    onDeleteRole={onDeleteRole}
-                  />
-                )}
-                {settingsTab === 'grupos' && (
-                  <GroupPanel
-                    categories={categories}
-                    canManage={canManageChannels}
-                    currentUserId={user?.id}
-                    isOwner={isServerOwner}
-                    onCreateCategory={onCreateGroup}
-                    onRenameCategory={onRenameGroup}
-                    onDeleteCategory={onDeleteGroup}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -468,177 +400,9 @@ function ServerCard({ server, canManage, canOpenSettings, onOpenSettings, onUplo
   );
 }
 
-const ACCENT_SWATCHES = ['#16C7B3', '#8C7BFA', '#F0568C', '#F0B429', '#4C9EF0', '#F0654F', '#8BD450'];
 
 // Aba "Geral" das configurações do servidor: nome, descrição, cor de destaque e convite —
 // personalização completa do grupo, tudo salvo no backend.
-function GeneralSettingsForm({ server, categories, canManage, onUpdateServer, onRegenerateInvite, themeAccent, isOwner, onDeleteServer, onLeaveServer, onCloseSettings }) {
-  const [name, setName] = useState(server?.name || '');
-  const [description, setDescription] = useState(server?.description || '');
-  const [color, setColor] = useState(server?.color || themeAccent);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
-  const [error, setError] = useState('');
-  const [confirmDanger, setConfirmDanger] = useState(false);
-
-  useEffect(() => {
-    setName(server?.name || '');
-    setDescription(server?.description || '');
-    setColor(server?.color || themeAccent);
-  }, [server?.id]);
-
-  const dirty = name.trim() !== (server?.name || '') || description !== (server?.description || '') || color !== (server?.color || themeAccent);
-
-  async function handleSave() {
-    if (!name.trim() || !canManage) return;
-    setSaving(true);
-    setError('');
-    try {
-      await onUpdateServer?.({ name: name.trim(), description, color });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (err) {
-      setError(err?.response?.data?.error || 'Falha ao salvar as alterações');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleRegenerate() {
-    if (!canManage) return;
-    setRegenerating(true);
-    try {
-      await onRegenerateInvite?.();
-    } finally {
-      setRegenerating(false);
-    }
-  }
-
-  function handleCopyInvite() {
-    navigator.clipboard?.writeText(server?.invite_code || '');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
-  return (
-    <div style={styles.generalBox}>
-      <div style={styles.svrFieldGroup}>
-        <label style={styles.svrFieldLabel}>Nome do servidor</label>
-        <input
-          type="text"
-          style={styles.svrFieldInput}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={!canManage}
-          maxLength={60}
-        />
-      </div>
-
-      <div style={styles.svrFieldGroup}>
-        <label style={styles.svrFieldLabel}>Descrição</label>
-        <textarea
-          style={styles.svrFieldTextarea}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={!canManage}
-          maxLength={300}
-          placeholder="Do que é esse servidor?"
-          rows={3}
-        />
-      </div>
-
-      <div style={styles.svrFieldGroup}>
-        <label style={styles.svrFieldLabel}>Cor de destaque</label>
-        <div style={styles.swatchRow}>
-          {ACCENT_SWATCHES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              disabled={!canManage}
-              onClick={() => setColor(c)}
-              style={{ ...styles.svrColorSwatch, background: c, ...(color === c ? styles.svrColorSwatchActive : {}) }}
-              title={c}
-            >
-              {color === c && <CheckIcon size={12} />}
-            </button>
-          ))}
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            disabled={!canManage}
-            style={styles.svrColorPicker}
-            title="Cor personalizada"
-          />
-        </div>
-        <div style={styles.hintTextStandalone}>Usada no ícone do servidor (quando não há imagem) e no banner de fundo.</div>
-      </div>
-
-      {canManage && (
-        <div style={styles.saveRow}>
-          <button type="button" style={styles.primaryBtn} onClick={handleSave} disabled={!dirty || saving || !name.trim()}>
-            {saving ? 'Salvando…' : saved ? <span style={styles.inlineCheck}>Salvo <CheckIcon size={12} /></span> : 'Salvar alterações'}
-          </button>
-          {error && <span style={styles.errorTextInline}>{error}</span>}
-        </div>
-      )}
-
-      <div style={styles.divider} />
-
-      <div style={styles.svrFieldGroup}>
-        <label style={styles.svrFieldLabel}>Código de convite</label>
-        <div style={styles.inviteRow}>
-          <code style={styles.inviteCodeBox}>{server?.invite_code}</code>
-          <button type="button" style={styles.smallGhostBtn} onClick={handleCopyInvite}>{copied ? <span style={styles.inlineCheck}>Copiado <CheckIcon size={12} /></span> : 'Copiar'}</button>
-          {canManage && (
-            <button type="button" style={styles.smallGhostBtn} onClick={handleRegenerate} disabled={regenerating}>
-              {regenerating ? 'Gerando…' : 'Gerar novo'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div style={styles.generalRow}><span style={styles.generalLabel}>Canais</span><span style={styles.generalValue}>{server.channels.length}</span></div>
-      <div style={styles.generalRow}><span style={styles.generalLabel}>Categorias</span><span style={styles.generalValue}>{categories.length}</span></div>
-      <div style={styles.hintTextStandalone}>Ícone e banner do servidor: edite direto no card acima do chat.</div>
-
-      <div style={styles.divider} />
-
-      <div style={styles.dangerZone}>
-        <label style={styles.dangerLabel}>Zona de perigo</label>
-        {!confirmDanger ? (
-          <button type="button" style={styles.dangerBtnOutline} onClick={() => setConfirmDanger(true)}>
-            {isOwner ? 'Excluir servidor' : 'Sair do servidor'}
-          </button>
-        ) : (
-          <div style={styles.dangerConfirmBox}>
-            <div style={styles.dangerConfirmText}>
-              {isOwner
-                ? 'Tem certeza? Isso apaga o servidor, canais e mensagens pra sempre — não dá pra desfazer.'
-                : `Tem certeza que quer sair de "${server.name}"? Você vai precisar de outro convite pra voltar.`}
-            </div>
-            <div style={styles.dangerConfirmActions}>
-              <button type="button" style={styles.smallGhostBtn} onClick={() => setConfirmDanger(false)}>Cancelar</button>
-              <button
-                type="button"
-                style={styles.dangerBtnSolid}
-                onClick={() => {
-                  if (isOwner) onDeleteServer?.(server.id);
-                  else onLeaveServer?.(server.id);
-                  onCloseSettings?.();
-                }}
-              >
-                {isOwner ? 'Excluir de vez' : 'Sair agora'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 const styles = {
   wrap: {

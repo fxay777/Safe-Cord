@@ -1,8 +1,9 @@
 const db = require('./db');
+const { effectiveStatus } = require('./statusUtils');
 
 // Colunas que podem ir pro cliente (nunca password_hash nem verification_code).
 const PUBLIC_USER_COLUMNS = `id, username, tag, avatar_color, display_name, avatar_url, banner_url, bio,
-  status, status_mode, spotify_track, connections, email, email_verified, pro_until, last_seen_at, created_at`;
+  status, status_mode, spotify_track, connections, email, email_verified, pro_until, last_seen_at, pronouns, status_text, theme_primary, theme_secondary, created_at`;
 
 const listBadgesStmt = db.prepare(
   `SELECT b.id, b.name, b.description, b.icon, b.color
@@ -37,6 +38,36 @@ function parseUserRow(row, { includeBadges = true } = {}) {
 function getPublicUser(userId) {
   const row = db.prepare(`SELECT ${PUBLIC_USER_COLUMNS} FROM users WHERE id = ?`).get(userId);
   return parseUserRow(row);
+}
+
+/**
+ * Perfil como OS OUTROS veem: sem email (dado privado da conta).
+ * Use isto sempre que um usuário for mostrado/enviado pra outra pessoa.
+ */
+function getProfileForOthers(userId) {
+  const user = getPublicUser(userId);
+  if (!user) return null;
+  const { email, email_verified, ...rest } = user;
+  // Quem está invisível aparece offline para os outros — nunca revelar o modo escolhido
+  const shown = effectiveStatus(user.status_mode, user.status === 'online');
+  return { ...rest, status_mode: shown, status: shown };
+}
+
+/** Quem tem relação com o usuário: amigos, quem divide servidor ou conversa com ele. */
+function relatedUserIds(userId) {
+  const rows = db.prepare(
+    `SELECT CASE WHEN requester_id = ? THEN addressee_id ELSE requester_id END AS id
+       FROM friendships WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)
+     UNION SELECT sm2.user_id FROM server_members sm1 JOIN server_members sm2 ON sm2.server_id = sm1.server_id WHERE sm1.user_id = ?
+     UNION SELECT p2.user_id FROM dm_participants p1 JOIN dm_participants p2 ON p2.conversation_id = p1.conversation_id WHERE p1.user_id = ?`
+  ).all(userId, userId, userId, userId, userId);
+  return new Set(rows.map((r) => r.id));
+}
+
+/** Pode ver o perfil completo (banner, bio…)? Só quem tem alguma relação — igual ao Discord. */
+function canViewProfile(viewerId, targetId) {
+  if (viewerId === targetId) return true;
+  return relatedUserIds(viewerId).has(targetId);
 }
 
 /** Dá uma insígnia pra alguém (não falha se já tiver). */
@@ -90,6 +121,9 @@ function findUserByHandle(handle) {
 }
 
 module.exports = {
+  getProfileForOthers,
+  relatedUserIds,
+  canViewProfile,
   PUBLIC_USER_COLUMNS,
   parseUserRow,
   getPublicUser,

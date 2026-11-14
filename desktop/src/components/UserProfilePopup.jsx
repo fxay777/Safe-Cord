@@ -1,7 +1,7 @@
-import BadgeRow from './BadgeRow';
-import React, { useEffect, useRef, useState } from 'react';
-import { resolveAssetUrl } from '../api';
-import { EditIcon, UserIcon, MusicIcon, LinkIcon, CheckIcon } from './Icons';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { EditIcon, UserIcon, CheckIcon, ChevronDownIcon } from './Icons';
+import ProfileCard from './ProfileCard';
 
 export const STATUS_OPTIONS = [
   { id: 'online', label: 'Ativo', color: 'var(--success)' },
@@ -15,28 +15,47 @@ export function statusMeta(statusMode) {
   return STATUS_OPTIONS.find((s) => s.id === statusMode) || STATUS_OPTIONS[0];
 }
 
-// Card compacto ao clicar no próprio avatar — igual ao Discord: resumo do perfil,
-// escolher status (ativo/ausente/não incomodar/invisível), editar perfil e trocar de conta.
-export default function UserProfilePopup({ open, user, onClose, onChangeStatus, onOpenProfileEdit, onOpenAccounts }) {
+// Seu cartão ao clicar no próprio avatar: perfil completo + status, editar perfil e trocar de conta.
+// Renderizado num portal com posição fixa, ancorado na barra de usuário — assim não é cortado
+// pelas colunas com overflow escondido.
+export default function UserProfilePopup({ open, user, anchorRef, onClose, onChangeStatus, onOpenProfileEdit, onOpenAccounts }) {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    function place() {
+      const r = anchorRef?.current?.getBoundingClientRect();
+      if (!r) { setPos({ left: 12, bottom: 80 }); return; }
+      const width = 300;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+      setPos({ left, bottom: Math.max(8, window.innerHeight - r.top + 8) });
     }
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [open, anchorRef]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleClickOutside(e) {
+      if (ref.current?.contains(e.target)) return;
+      if (anchorRef?.current?.contains(e.target)) return; // o próprio botão alterna
+      onClose();
+    }
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open, onClose]);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose, anchorRef]);
 
-  if (!open) return null;
+  useEffect(() => { if (!open) setStatusMenuOpen(false); }, [open]);
 
-  const name = user?.display_name || user?.username || 'Usuário';
-  const initials = (name || '?').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase();
-  const avatarUrl = resolveAssetUrl(user?.avatar_url);
-  const bannerUrl = resolveAssetUrl(user?.banner_url);
-  const connections = user?.connections || [];
+  if (!open || !pos) return null;
   const currentStatus = statusMeta(user?.status_mode);
 
   function pickStatus(id) {
@@ -44,53 +63,20 @@ export default function UserProfilePopup({ open, user, onClose, onChangeStatus, 
     setStatusMenuOpen(false);
   }
 
-  return (
-    <div ref={ref} style={styles.popup} onClick={(e) => e.stopPropagation()}>
-      <div
-        style={{
-          ...styles.hero,
-          ...(bannerUrl
-            ? { backgroundImage: `url(${bannerUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-            : { background: 'var(--accent-gradient)' }),
-        }}
-      >
-        <div style={styles.avatarWrap}>
-          {avatarUrl ? (
-            <img src={avatarUrl} alt={name} style={styles.avatarImg} />
-          ) : (
-            <div style={{ ...styles.avatarFallback, background: user?.avatar_color || 'var(--accent)' }}>{initials}</div>
-          )}
-          <span style={{ ...styles.statusDot, background: currentStatus.color }} />
-        </div>
-      </div>
-
-      <div style={styles.body}>
-        <div style={styles.name}>{name}</div>
-        <div style={styles.tagRow}>
-          <span style={styles.tag}>{user?.username}#{user?.tag}</span>
-          <BadgeRow badges={user?.badges} size={17} />
-        </div>
-
-        {user?.bio && <div style={styles.bio}>{user.bio}</div>}
-
-        {user?.spotify_track && (
-          <SpotifyMiniCard track={user.spotify_track} />
-        )}
-
-        {connections.length > 0 && (
-          <div style={styles.quickRow}>
-            <span style={styles.quickChip}><LinkIcon size={11} /> {connections.length} conta{connections.length > 1 ? 's' : ''} conectada{connections.length > 1 ? 's' : ''}</span>
-          </div>
-        )}
-
+  return createPortal(
+    <div
+      ref={ref}
+      data-own-profile-popup
+      style={{ position: 'fixed', left: pos.left, bottom: pos.bottom, zIndex: 400, maxHeight: `calc(100vh - ${pos.bottom + 12}px)`, overflowY: 'auto', borderRadius: 20 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <ProfileCard user={user} width={300}>
         <div style={styles.divider} />
-
-        {/* Seletor de status */}
         <div style={styles.statusPickerWrap}>
           <button type="button" style={styles.statusPickerBtn} onClick={() => setStatusMenuOpen((v) => !v)}>
             <span style={{ ...styles.statusDotSm, background: currentStatus.color }} />
             <span style={{ flex: 1, textAlign: 'left' }}>{currentStatus.label}</span>
-            <span style={styles.chevron}>{statusMenuOpen ? '▲' : '▼'}</span>
+            <ChevronDownIcon size={12} style={{ transform: statusMenuOpen ? 'rotate(180deg)' : 'none', color: 'var(--text-low)' }} />
           </button>
           {statusMenuOpen && (
             <div style={styles.statusMenu}>
@@ -104,15 +90,15 @@ export default function UserProfilePopup({ open, user, onClose, onChangeStatus, 
             </div>
           )}
         </div>
-
         <button type="button" style={styles.actionBtn} onClick={() => { onOpenProfileEdit?.(); onClose(); }}>
           <EditIcon size={13} /> Editar perfil
         </button>
         <button type="button" style={styles.actionBtn} onClick={() => { onOpenAccounts?.(); onClose(); }}>
           <UserIcon size={13} /> Mudar de conta
         </button>
-      </div>
-    </div>
+      </ProfileCard>
+    </div>,
+    document.body,
   );
 }
 

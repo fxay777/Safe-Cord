@@ -19,7 +19,7 @@ export function createSocket(token) {
 // Isso resolve pra URL completa; se algum dia vier uma URL http(s) pronta, usa ela direto.
 export function resolveAssetUrl(url) {
   if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
+  if (/^(https?:|blob:|data:)/i.test(url)) return url;
   return `${API_URL}${url}`;
 }
 

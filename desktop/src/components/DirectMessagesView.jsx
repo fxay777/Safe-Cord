@@ -12,6 +12,7 @@ import MarketView from './market/MarketView';
 import friendsIcon from '../assets/friends-icon.png';
 
 export default function DirectMessagesView({
+  onOpenUserProfile,
   api,
   socket,
   user,
@@ -270,6 +271,7 @@ export default function DirectMessagesView({
             typingUsers={typingUsers}
             isDM
             user={user}
+            onOpenProfile={onOpenUserProfile}
             onRenameGroup={activeConversation.isGroup ? handleRenameGroup : null}
             onLeaveGroup={activeConversation.isGroup ? handleLeaveGroup : null}
           />

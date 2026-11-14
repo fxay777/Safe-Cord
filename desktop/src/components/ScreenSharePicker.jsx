@@ -144,7 +144,7 @@ const styles = {
     background: 'var(--bg-elevated)', border: '2px solid transparent', borderRadius: 16,
     padding: 8, cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 8,
   },
-  cardActive: { borderColor: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 8%, transparent)' },
+  cardActive: { border: '2px solid var(--accent)', background: 'color-mix(in srgb, var(--accent) 8%, transparent)' },
   thumbWrap: {
     aspectRatio: '16 / 9', borderRadius: 11, background: '#05080C', overflow: 'hidden',
     display: 'flex', alignItems: 'center', justifyContent: 'center',

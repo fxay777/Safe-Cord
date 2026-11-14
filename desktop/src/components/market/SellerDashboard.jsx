@@ -641,7 +641,7 @@ const s = {
   edFooter: { display: 'flex', alignItems: 'center', gap: 8, padding: '14px 22px 18px', borderTop: '1px solid var(--border)' },
   typePick: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
   typeCard: { display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, border: '2px solid var(--border)', background: 'var(--bg-base)', cursor: 'pointer', fontFamily: 'inherit' },
-  typeCardActive: { borderColor: 'var(--accent)', background: 'var(--accent-softer)' },
+  typeCardActive: { border: '2px solid var(--accent)', background: 'var(--accent-softer)' },
   typeIcon: { width: 40, height: 40, borderRadius: 13, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   typeLabel: { fontSize: 14, fontWeight: 700, color: 'var(--text-hi)' },
   typeHint: { fontSize: 12, color: 'var(--text-low)', marginTop: 1 },

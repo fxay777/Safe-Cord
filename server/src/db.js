@@ -27,6 +27,10 @@ const ensureUserColumns = () => {
     // --- Assinatura (SafeCord Pro, comprada via Stripe) ---
     ['pro_until', 'INTEGER'], // timestamp em que a assinatura expira; null = não é Pro
     ['last_seen_at', 'INTEGER'], // quando a última conexão caiu — "Visto há 1h" na lista de membros
+    ['pronouns', "TEXT NOT NULL DEFAULT ''"],      // ex.: ela/dela
+    ['status_text', "TEXT NOT NULL DEFAULT ''"],   // status personalizado ("jogando valorant")
+    ['theme_primary', 'TEXT'],                     // tema do perfil: cor de cima do card
+    ['theme_secondary', 'TEXT'],                   // tema do perfil: cor de baixo do card
   ];
 
   for (const [name, definition] of migrations) {
@@ -331,6 +335,16 @@ CREATE TABLE IF NOT EXISTS payouts (
   note TEXT NOT NULL DEFAULT '',
   created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
   created_at INTEGER NOT NULL
+);
+
+-- Banidos de um servidor: não conseguem entrar de novo nem com convite
+CREATE TABLE IF NOT EXISTS server_bans (
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL DEFAULT '',
+  banned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (server_id, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_products_store ON products(store_id, active);

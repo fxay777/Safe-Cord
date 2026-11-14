@@ -17,3 +17,10 @@ rm -f safecord.db*
 MARKET_DEV_PAYMENTS=1 ADMIN_EMAILS=admin@t.com node src/index.js &
 node tests/market.test.js
 ```
+
+**Moderação e perfil (servidor normal, banco zerado):**
+```bash
+rm -f safecord.db* && node src/index.js &
+node tests/moderation.test.js
+node tests/profile.test.js
+```

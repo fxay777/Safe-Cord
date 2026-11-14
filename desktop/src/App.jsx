@@ -12,12 +12,14 @@ import ChatView from './components/ChatView';
 import MemberList from './components/MemberList';
 import ScreenShareViewer from './components/ScreenShareViewer';
 import ScreenSharePicker from './components/ScreenSharePicker';
+import ServerSettingsModal from './components/ServerSettingsModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import VerifyEmailScreen from './components/VerifyEmailScreen';
 import ShopModal from './components/ShopModal';
 import DirectMessagesView from './components/DirectMessagesView';
 import SettingsModal from './components/SettingsModal';
 import ProfileEditModal from './components/ProfileEditModal';
+import ProfileViewer from './components/ProfileViewer';
 
 export default function App() {
   const accountsHook = useAccounts();
@@ -33,6 +35,10 @@ export default function App() {
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
+  const [serverSettingsSection, setServerSettingsSection] = useState(null); // null = fechado
+  const [profileTarget, setProfileTarget] = useState(null); // cartão de perfil de alguém aberto
+  const closeProfileViewer = useCallback(() => setProfileTarget(null), []);
+  const [notice, setNotice] = useState(null); // aviso rápido no rodapé (ex.: você foi expulso)
   const [typingUsers, setTypingUsers] = useState([]);
   const [voiceChannelId, setVoiceChannelId] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -56,6 +62,11 @@ export default function App() {
   function openSettings(tab = 'voz') {
     setSettingsTab(tab);
     setSettingsOpen(true);
+  }
+
+  function openServerProfile(userId, rect, preview) {
+    // membros já trazem o status atual; o resto (cargos, servidores em comum) vem da API
+    setProfileTarget({ userId, rect, preview: preview && { ...preview, status_mode: preview.status_mode || preview.status }, serverId: activeServerId });
   }
 
   function openProfileEdit() {
@@ -174,6 +185,10 @@ export default function App() {
         spotify_track: profile.spotify_track !== undefined ? profile.spotify_track : (user?.spotify_track ?? null),
         connections: profile.connections ?? user?.connections ?? [],
       };
+      // campos novos: só manda o que o editor mexeu (undefined = deixa como está; null = limpa o tema)
+      for (const key of ['pronouns', 'status_text', 'theme_primary', 'theme_secondary']) {
+        if (profile[key] !== undefined) payload[key] = profile[key];
+      }
 
       const { data } = await api.put('/auth/me/profile', payload);
       updateActiveUser(data.user || data);
@@ -364,6 +379,26 @@ export default function App() {
         : s)));
       setActiveChannel((prev) => (prev?.id === channel.id ? { ...prev, ...channel } : prev));
     };
+    // Fui expulso/banido de um servidor: some da lista na hora
+    const onServerRemoved = ({ serverId, kind }) => {
+      setServers((prev) => {
+        const gone = prev.find((x) => x.id === serverId);
+        if (gone) setNotice(kind === 'ban' ? `Você foi banido de "${gone.name}"` : `Você foi expulso de "${gone.name}"`);
+        const rest = prev.filter((x) => x.id !== serverId);
+        setActiveServerId((cur) => (cur === serverId ? rest[0]?.id || null : cur));
+        return rest;
+      });
+      setServerSettingsSection(null);
+    };
+    // Alguém saiu/foi removido do servidor aberto
+    const onMemberRemoved = ({ serverId, userId }) => {
+      if (serverId === activeServerId) setMembers((prev) => prev.filter((m) => m.id !== userId));
+    };
+    // Alguém mudou o perfil (nome, foto, status, tema…): atualiza a lista de membros
+    const onUserUpdated = ({ user: u }) => {
+      if (!u) return;
+      setMembers((prev) => prev.map((m) => (m.id === u.id ? { ...m, ...u, roles: m.roles } : m)));
+    };
     const onVoicePresence = ({ channelId, participants }) => {
       setVoicePresence((prev) => ({ ...prev, [channelId]: participants }));
     };
@@ -372,14 +407,27 @@ export default function App() {
     socket.on('presence:update', onPresence);
     socket.on('voice:presence', onVoicePresence);
     socket.on('channel:updated', onChannelUpdated);
+    socket.on('server:removed', onServerRemoved);
+    socket.on('server:member-removed', onMemberRemoved);
+    socket.on('user:updated', onUserUpdated);
     return () => {
       socket.off('channel:updated', onChannelUpdated);
+      socket.off('server:removed', onServerRemoved);
+      socket.off('server:member-removed', onMemberRemoved);
+      socket.off('user:updated', onUserUpdated);
       socket.off('message:new', onMsg);
       socket.off('typing', onTyping);
       socket.off('presence:update', onPresence);
       socket.off('voice:presence', onVoicePresence);
     };
-  }, [socket, activeChannel, view]);
+  }, [socket, activeChannel, view, activeServerId]);
+
+  // O aviso do rodapé some sozinho
+  useEffect(() => {
+    if (!notice) return undefined;
+    const t = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   // Avisa o servidor qual grupo estamos olhando, pra receber (e manter atualizada) a lista
   // de quem está em cada canal de voz — mesmo sem ter entrado na chamada, igual ao Discord.
@@ -453,6 +501,7 @@ export default function App() {
   async function handleCreateRole(name, color, extra = {}) {
     const { data } = await api.post(`/servers/${activeServerId}/roles`, { name, color, permissions: extra.permissions });
     setRoles((prev) => [data.role, ...prev]);
+    return data.role;
   }
 
   async function handleUpdateRole(id, updates) {
@@ -482,7 +531,12 @@ export default function App() {
   }
 
   async function handleUpdateChannelTopic(channelId, topic) {
-    const { data } = await api.put(`/servers/${activeServerId}/channels/${channelId}`, { topic });
+    return handleUpdateChannel(channelId, { topic });
+  }
+
+  // Nome, descrição e categoria de um canal (tela de configurações do servidor)
+  async function handleUpdateChannel(channelId, patch) {
+    const { data } = await api.put(`/servers/${activeServerId}/channels/${channelId}`, patch);
     setServers((prev) => prev.map((s) => (s.id === activeServerId
       ? { ...s, channels: s.channels.map((c) => (c.id === channelId ? { ...c, ...data.channel } : c)) }
       : s)));
@@ -575,6 +629,7 @@ export default function App() {
       {view === 'friends' ? (
         <ErrorBoundary label="Amigos e Conversas">
         <DirectMessagesView
+          onOpenUserProfile={(userId, rect, preview) => setProfileTarget({ userId, rect, preview, serverId: null })}
           api={api}
           socket={socket}
           user={user}
@@ -652,6 +707,7 @@ export default function App() {
               onOpenShop={() => setShopOpen(true)}
               onUploadServerImage={handleUploadServerImage}
               onRemoveServerImage={handleRemoveServerImage}
+              onOpenServerSettings={(section) => setServerSettingsSection(section || 'overview')}
             />
 
             {voice.connecting && !voice.connected && (
@@ -674,11 +730,49 @@ export default function App() {
               inviteCode={activeServer?.invite_code}
               canEditTopic={Boolean(myPermissions?.isOwner || myPermissions?.permissions?.includes('gerenciar_canais'))}
               onUpdateTopic={(topic) => activeChannel && handleUpdateChannelTopic(activeChannel.id, topic)}
+              onOpenProfile={openServerProfile}
             />
           </div>
 
-          <MemberList members={members} ownerId={activeServer?.owner_id} />
+          <MemberList members={members} ownerId={activeServer?.owner_id} onOpenProfile={openServerProfile} />
         </ErrorBoundary>
+      )}
+
+      {serverSettingsSection && activeServer && (
+        <ServerSettingsModal
+          api={api}
+          server={activeServer}
+          categories={categories}
+          roles={roles}
+          members={members}
+          user={user}
+          permissions={myPermissions}
+          initialSection={serverSettingsSection}
+          onClose={() => setServerSettingsSection(null)}
+          onUpdateServer={handleUpdateServer}
+          onUploadServerImage={handleUploadServerImage}
+          onRemoveServerImage={handleRemoveServerImage}
+          onRegenerateInvite={handleRegenerateInvite}
+          onCreateChannel={handleCreateChannel}
+          onUpdateChannel={handleUpdateChannel}
+          onDeleteChannel={handleDeleteChannel}
+          onCreateCategory={handleCreateGroup}
+          onRenameCategory={handleRenameGroup}
+          onDeleteCategory={handleDeleteGroup}
+          onCreateRole={handleCreateRole}
+          onUpdateRole={handleUpdateRole}
+          onDeleteRole={handleDeleteRole}
+          onAssignMemberRoles={handleAssignMemberRoles}
+          onMemberRemoved={(userId) => setMembers((prev) => prev.filter((m) => m.id !== userId))}
+          onDeleteServer={deleteServer}
+          onLeaveServer={leaveServer}
+        />
+      )}
+
+      {notice && (
+        <div style={styles.notice} onClick={() => setNotice(null)} role="status">
+          {notice}
+        </div>
       )}
 
       {screenPickerOpen && (
@@ -735,6 +829,14 @@ export default function App() {
         onRemoveProfileImage={handleRemoveProfileImage}
         themeAccent={settingsHook.activeTheme.accent}
       />
+
+      <ProfileViewer
+        api={api}
+        target={profileTarget}
+        me={user}
+        onClose={closeProfileViewer}
+        onEditOwn={openProfileEdit}
+      />
     </div>
   );
 }
@@ -742,6 +844,11 @@ export default function App() {
 const styles = {
   // Layout "flutuante" no estilo Stoat: a barra de servidores fica direto na moldura e
   // cada coluna vira um painel arredondado, com um respiro entre eles.
+  notice: {
+    position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 300, cursor: 'pointer',
+    background: 'var(--text-hi)', color: 'var(--bg-surface)', fontSize: 13.5, fontWeight: 600,
+    padding: '11px 18px', borderRadius: 14, boxShadow: 'var(--shadow-lg)',
+  },
   appWrap: {
     display: 'flex', height: '100%', gap: 'var(--panel-gap)',
     padding: 'var(--panel-gap) var(--panel-gap) var(--panel-gap) 0', background: 'var(--bg-void)',

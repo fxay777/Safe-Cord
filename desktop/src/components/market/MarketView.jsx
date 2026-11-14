@@ -790,7 +790,7 @@ const styles = {
   galleryMain: { width: '100%', aspectRatio: '1 / 1', borderRadius: 16 },
   thumbs: { display: 'flex', gap: 8, flexWrap: 'wrap' },
   thumb: { width: 58, height: 58, padding: 2, borderRadius: 10, border: '2px solid transparent', background: 'none', cursor: 'pointer' },
-  thumbActive: { borderColor: 'var(--accent)' },
+  thumbActive: { border: '2px solid var(--accent)' },
   productInfo: { flex: 1, minWidth: 0, padding: '18px 22px 20px', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
   productTitle: { fontSize: 22, fontWeight: 750, color: 'var(--text-hi)', letterSpacing: -0.4, margin: '12px 0 6px', lineHeight: 1.2 },
   productPrice: { fontSize: 28, fontWeight: 800, color: 'var(--text-hi)', letterSpacing: -0.6 },
