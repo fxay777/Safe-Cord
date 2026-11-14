@@ -603,3 +603,67 @@ export function EyeOffIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+// ─── Mercado ────────────────────────────────────────────────────────────────
+export function PackageIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z" {...stroke} />
+      <path d="m4 7.5 8 4.5 8-4.5M12 12v9M8 5.3l8 4.5" {...stroke} />
+    </svg>
+  );
+}
+
+export function TruckIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M2.5 6.5h11v9h-11zM13.5 9.5h4l3 3.2v2.8h-7" {...stroke} />
+      <circle cx="7" cy="17.5" r="1.8" {...stroke} /><circle cx="17" cy="17.5" r="1.8" {...stroke} />
+    </svg>
+  );
+}
+
+export function DownloadIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15" {...stroke} />
+    </svg>
+  );
+}
+
+export function FileIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5l-5-5Z" {...stroke} />
+      <path d="M14 3.5v5h5" {...stroke} />
+    </svg>
+  );
+}
+
+export function WalletIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3" {...stroke} />
+      <rect x="4" y="7.5" width="16.5" height="11.5" rx="2.5" {...stroke} />
+      <circle cx="16" cy="13.2" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function StoreIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4 9.5 5.5 4.5h13L20 9.5a2.7 2.7 0 0 1-5.3.6 2.7 2.7 0 0 1-5.4 0A2.7 2.7 0 0 1 4 9.5Z" {...stroke} />
+      <path d="M5.5 11.5v8h13v-8M10 19.5v-4.5h4v4.5" {...stroke} />
+    </svg>
+  );
+}
+
+export function TagIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.4 1.4 0 0 1 0 2l-6.7 6.7a1.4 1.4 0 0 1-2 0l-8.3-8.3Z" {...stroke} />
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" />
+    </svg>
+  );
+}

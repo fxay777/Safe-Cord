@@ -83,7 +83,7 @@ function fulfillPurchase(purchase) {
 // Webhook do Stripe. A assinatura é validada sobre o corpo CRU (req.rawBody), que o
 // express.json guarda pra gente lá no index.js — por isso esta rota vem antes do requireAuth:
 // quem chama é o Stripe, não um usuário logado.
-router.post('/webhook', (req, res) => {
+router.post('/webhook', async (req, res) => {
   if (!stripeEnabled()) return res.status(503).json({ error: 'Stripe não configurado' });
 
   let event;
@@ -98,10 +98,23 @@ router.post('/webhook', (req, res) => {
     return res.status(400).json({ error: `Webhook inválido: ${err.message}` });
   }
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const purchase = db.prepare('SELECT * FROM purchases WHERE stripe_session_id = ?').get(session.id);
-    if (purchase) fulfillPurchase(purchase);
+  if (event?.type === 'checkout.session.completed') {
+    let session = event.data?.object;
+    // Sem segredo de webhook não dá pra confiar no corpo: confere a sessão direto no Stripe
+    if (!STRIPE_WEBHOOK_SECRET) {
+      try {
+        session = await stripe.checkout.sessions.retrieve(session?.id);
+      } catch {
+        return res.status(400).json({ error: 'Sessão desconhecida' });
+      }
+    }
+    // Pedido do Mercado?
+    const { handleStripeSession } = require('./marketRoutes');
+    const handled = await handleStripeSession(session, req);
+    if (!handled && session.payment_status === 'paid') {
+      const purchase = db.prepare('SELECT * FROM purchases WHERE stripe_session_id = ?').get(session.id);
+      if (purchase) fulfillPurchase(purchase);
+    }
   }
 
   res.json({ received: true });

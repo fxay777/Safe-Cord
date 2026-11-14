@@ -149,7 +149,48 @@ async function saveMessageAttachment(buffer, mimetype, userId, originalName) {
   };
 }
 
+// ─── Mercado ────────────────────────────────────────────────────────────────
+// Fotos de produto são públicas (servidas em /uploads/products). O arquivo de produto DIGITAL
+// vai pra uma pasta privada FORA de /uploads — só sai pela rota de download, depois de pago.
+const PRODUCT_IMAGE_DIR = path.join(UPLOAD_ROOT, 'products');
+const STORE_IMAGE_DIR = path.join(UPLOAD_ROOT, 'stores');
+const PRIVATE_ROOT = path.join(__dirname, '..', 'private-files');
+const DIGITAL_DIR = path.join(PRIVATE_ROOT, 'digital');
+for (const dir of [PRODUCT_IMAGE_DIR, STORE_IMAGE_DIR, DIGITAL_DIR]) fs.mkdirSync(dir, { recursive: true });
+
+const MAX_DIGITAL_BYTES = 100 * 1024 * 1024; // 100MB
+const uploadDigital = multer({
+  storage: multer.diskStorage({
+    destination: DIGITAL_DIR,
+    filename: (req, file, cb) => cb(null, `${uuidv4()}.bin`), // nome aleatório, sem extensão executável
+  }),
+  limits: { fileSize: MAX_DIGITAL_BYTES },
+});
+
+async function saveProductImage(buffer, storeId) {
+  const optimized = await sharp(buffer).rotate()
+    .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 84 }).toBuffer();
+  const filename = `${storeId}-${uuidv4()}.webp`;
+  fs.writeFileSync(path.join(PRODUCT_IMAGE_DIR, filename), optimized);
+  return `/uploads/products/${filename}`;
+}
+
+async function saveStoreImage(buffer, storeId, kind) {
+  const spec = kind === 'banner' ? BANNER_SPEC : AVATAR_SPEC;
+  const optimized = await processImage(buffer, spec);
+  const filename = `${storeId}-${kind}-${uuidv4()}.webp`;
+  fs.writeFileSync(path.join(STORE_IMAGE_DIR, filename), optimized);
+  return `/uploads/stores/${filename}`;
+}
+
+function digitalFilePath(storedName) {
+  const safe = path.basename(storedName || '');
+  return path.join(DIGITAL_DIR, safe);
+}
+
 module.exports = {
+  uploadDigital, saveProductImage, saveStoreImage, digitalFilePath, MAX_DIGITAL_BYTES,
   upload, saveAvatar, saveBanner, saveServerIcon, saveServerBanner, removeIfLocalUpload, UPLOAD_ROOT,
   uploadAttachment, saveMessageAttachment,
 };

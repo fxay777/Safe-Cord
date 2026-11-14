@@ -142,3 +142,6 @@ input:focus-visible,
 .sc-auth-input:focus-within { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-soft); }
 .sc-auth-submit:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
 .sc-auth-submit:active:not(:disabled) { transform: translateY(0); }
+
+/* ─── Mercado ─── */
+.sc-product-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 55%, transparent) !important; box-shadow: 0 10px 28px rgba(0,0,0,0.25); }

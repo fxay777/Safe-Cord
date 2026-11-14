@@ -7,7 +7,8 @@ import VoiceBar from './VoiceBar';
 import CreateGroupModal from './CreateGroupModal';
 import { statusMeta } from './UserProfilePopup';
 import { EmptyDMArt } from './EmptyStateArt';
-import { ShopIcon, UsersIcon } from './Icons';
+import { ShopIcon, UsersIcon, StoreIcon } from './Icons';
+import MarketView from './market/MarketView';
 import friendsIcon from '../assets/friends-icon.png';
 
 export default function DirectMessagesView({
@@ -35,9 +36,11 @@ export default function DirectMessagesView({
   onToggleScreenShare,
   remoteScreenShares,
   onViewScreenShare,
+  initialPanel = 'friends',
 }) {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
+  const [homePanel, setHomePanel] = useState(initialPanel); // 'friends' | 'market' (quando nenhuma conversa está aberta)
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
   const [unreadByConversation, setUnreadByConversation] = useState({});
@@ -152,8 +155,8 @@ export default function DirectMessagesView({
         <div style={styles.listScroll}>
           <button
             type="button"
-            style={{ ...styles.navItem, ...(activeConversation === null ? styles.navItemActive : {}) }}
-            onClick={() => setActiveConversation(null)}
+            style={{ ...styles.navItem, ...(activeConversation === null && homePanel === 'friends' ? styles.navItemActive : {}) }}
+            onClick={() => { setActiveConversation(null); setHomePanel('friends'); }}
           >
             <span style={styles.navIcon}>
               <img src={friendsIcon} alt="" style={styles.navIconImg} />
@@ -161,10 +164,19 @@ export default function DirectMessagesView({
             Amigos
           </button>
 
+          <button
+            type="button"
+            style={{ ...styles.navItem, ...(activeConversation === null && homePanel === 'market' ? styles.navItemActive : {}) }}
+            onClick={() => { setActiveConversation(null); setHomePanel('market'); }}
+          >
+            <span style={styles.navIcon}><StoreIcon size={16} /></span>
+            Mercado
+          </button>
+
           {onOpenShop && (
             <button type="button" style={styles.navItem} onClick={onOpenShop}>
               <span style={styles.navIcon}><ShopIcon size={16} /></span>
-              Loja
+              Insígnias e Pro
             </button>
           )}
 
@@ -261,6 +273,8 @@ export default function DirectMessagesView({
             onRenameGroup={activeConversation.isGroup ? handleRenameGroup : null}
             onLeaveGroup={activeConversation.isGroup ? handleLeaveGroup : null}
           />
+        ) : homePanel === 'market' ? (
+          <MarketView api={api} socket={socket} user={user} />
         ) : (
           <FriendsPanel
             api={api}

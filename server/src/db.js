@@ -265,6 +265,78 @@ CREATE TABLE IF NOT EXISTS purchases (
   paid_at INTEGER
 );
 
+-- ─── Mercado (lojas dos microempreendedores) ───────────────────────────────
+-- O pagamento cai na conta do SafeCord; cada pedido guarda quanto é do vendedor
+-- (seller_cents) e a taxa da plataforma (fee_cents). O repasse é manual (payouts).
+CREATE TABLE IF NOT EXISTS stores (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  logo_url TEXT,
+  banner_url TEXT,
+  payout_info TEXT NOT NULL DEFAULT '',   -- chave Pix / dados bancários (só o dono e o admin veem)
+  status TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'suspended'
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL,                      -- 'physical' | 'digital'
+  price_cents INTEGER NOT NULL,
+  shipping_cents INTEGER NOT NULL DEFAULT 0,
+  stock INTEGER,                           -- null = ilimitado
+  images TEXT NOT NULL DEFAULT '[]',       -- JSON com URLs públicas
+  digital_file TEXT,                       -- nome do arquivo na pasta privada (nunca exposta direto)
+  digital_file_name TEXT,
+  digital_file_size INTEGER,
+  active INTEGER NOT NULL DEFAULT 1,
+  sales_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'canceled'
+CREATE TABLE IF NOT EXISTS orders (
+  id TEXT PRIMARY KEY,
+  buyer_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  product_id TEXT REFERENCES products(id) ON DELETE SET NULL,
+  product_snapshot TEXT NOT NULL,          -- título/tipo/imagem no momento da compra
+  quantity INTEGER NOT NULL,
+  unit_price_cents INTEGER NOT NULL,
+  shipping_cents INTEGER NOT NULL DEFAULT 0,
+  total_cents INTEGER NOT NULL,
+  fee_cents INTEGER NOT NULL,
+  seller_cents INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  shipping_address TEXT,                   -- JSON (só produto físico)
+  tracking_code TEXT,
+  stripe_session_id TEXT,
+  payout_id TEXT,
+  created_at INTEGER NOT NULL,
+  paid_at INTEGER,
+  shipped_at INTEGER,
+  delivered_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS payouts (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  amount_cents INTEGER NOT NULL,
+  order_count INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_products_store ON products(store_id, active);
+CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id, status);
+CREATE INDEX IF NOT EXISTS idx_orders_session ON orders(stripe_session_id);
 CREATE INDEX IF NOT EXISTS idx_dm_participants_user ON dm_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(user_id, created_at);

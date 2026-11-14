@@ -16,11 +16,13 @@ const dmRoutes = require('./routes/dmRoutes');
 const spotifyRoutes = require('./routes/spotifyRoutes');
 const badgeRoutes = require('./routes/badgeRoutes');
 const shopRoutes = require('./routes/shopRoutes');
+const marketRoutes = require('./routes/marketRoutes');
 const { attachRealtime } = require('./realtime');
 const { isSmtpConfigured } = require('./mailer');
 
 const app = express();
-app.use(cors());
+// Content-Disposition exposto: sem isso o app não lê o nome do arquivo baixado (produto digital)
+app.use(cors({ exposedHeaders: ['Content-Disposition'] }));
 
 // O webhook do Stripe precisa do corpo CRU pra validar a assinatura. Em vez de montar a
 // loja inteira antes do parser (o que deixaria req.body vazio nas outras rotas dela),
@@ -50,6 +52,7 @@ app.use('/api/dms', dmRoutes);
 app.use('/api/spotify', spotifyRoutes);
 app.use('/api/badges', badgeRoutes);
 app.use('/api/shop', shopRoutes);
+app.use('/api/market', marketRoutes);
 
 // Rede de segurança: sem isso, um erro em QUALQUER rota (ex: um INSERT que viola uma
 // constraint) derruba o processo inteiro e todo mundo cai junto. Aqui o pedido falha
@@ -57,6 +60,12 @@ app.use('/api/shop', shopRoutes);
 app.use((err, req, res, next) => {
   console.error(`Erro em ${req.method} ${req.originalUrl}:`, err.message);
   if (res.headersSent) return next(err);
+  // Erros de upload (multer): arquivo grande demais ou formato recusado viram mensagem clara
+  if (err.name === 'MulterError') {
+    const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Arquivo grande demais' : 'Upload inválido';
+    return res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: msg });
+  }
+  if (/^Formato/.test(err.message || '')) return res.status(400).json({ error: err.message });
   res.status(500).json({ error: 'Algo deu errado no servidor' });
 });
 

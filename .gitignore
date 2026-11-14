@@ -46,3 +46,6 @@ Thumbs.db
 
 # === Ferramentas de terceiros (não faz parte do projeto) ===
 .qodo/
+
+# arquivos de produtos digitais (privados, nunca versionar)
+server/private-files/
