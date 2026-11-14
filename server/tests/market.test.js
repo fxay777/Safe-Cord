@@ -8,6 +8,7 @@ const req = async (m, p, body, t, raw) => {
   return { s: r.status, d: data };
 };
 const rnd = () => Math.random().toString(36).slice(2, 7);
+const { openVerifiedStore } = require('./helpers/kyc');
 async function user(name, email, verify = true) {
   const r = await req('POST', '/auth/register', { username: name + rnd(), password: 'senha123', email: email || `${name}${rnd()}@t.com` });
   if (verify) await req('POST', '/auth/verify-email', { code: r.d.verification?.devCode }, r.d.token);
@@ -22,8 +23,8 @@ const addr = { name: 'Ana', cep: '01310-100', street: 'Av. Paulista', number: '1
   const admin = await user('adm', 'admin@t.com');
 
   ok((await req('POST', '/market/my-store', { name: 'Loja X' }, unverified)).s === 403, 'sem email confirmado não abre loja');
-  const st = await req('POST', '/market/my-store', { name: 'Doces da Ana', description: 'Brigadeiros', payout_info: 'pix: ana@pix' }, seller);
-  ok(st.s === 201 && st.d.store.payout_info === 'pix: ana@pix', 'vendedor abre a loja');
+  const { store: st } = await openVerifiedStore(req, seller, admin, { name: 'Doces da Ana', description: 'Brigadeiros caseiros feitos com carinho', payout_info: 'pix: ana@pix' });
+  ok(st.s === 201 && st.d.store.payout_info === 'pix: ana@pix', 'vendedor abre a loja (e passa pela verificação)');
   ok((await req('POST', '/market/my-store', { name: 'Outra' }, seller)).s === 409, 'não abre duas lojas');
 
   const bad = await req('POST', '/market/products', { title: 'X', type: 'physical', price_cents: 50 }, seller);

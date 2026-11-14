@@ -1,10 +1,40 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { WalletIcon, CheckIcon, StoreIcon, TagIcon, CloseIcon } from '../Icons';
+import { WalletIcon, CheckIcon, StoreIcon, TagIcon, CloseIcon, ShieldCheckIcon, AlertIcon } from '../Icons';
+import VerificationAdmin from './VerificationAdmin';
 import { brl, StoreAvatar, formatDate, errorText, ui } from './marketUtils';
 
-// Painel dos administradores (ADMIN_EMAILS): quanto cada loja tem pra receber, chave Pix,
-// e registro dos repasses feitos manualmente.
+const PIX_LABEL = { cpf: 'CPF', cnpj: 'CNPJ', email: 'Email', phone: 'Celular', random: 'Aleatória' };
+
+// Painel dos administradores (ADMIN_EMAILS): verificação de vendedores e repasses.
 export default function MarketAdmin({ api, refreshKey }) {
+  const [tab, setTab] = useState('verificacoes');
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    api.get('/market/verification/admin/list?status=pending').then(({ data }) => setPending(data.counts?.pending || 0)).catch(() => {});
+  }, [api, refreshKey]);
+  return (
+    <div>
+      <div style={st.adminTabs}>
+        {[['verificacoes', 'Verificações', ShieldCheckIcon], ['repasses', 'Repasses', WalletIcon]].map(([id, label, Icon]) => (
+          <button key={id} type="button" onClick={() => setTab(id)} style={{ ...st.adminTab, ...(tab === id ? st.adminTabActive : {}) }}>
+            <Icon size={15} /> {label}
+            {id === 'verificacoes' && pending > 0 && <span style={st.badge}>{pending}</span>}
+          </button>
+        ))}
+      </div>
+      {tab === 'verificacoes'
+        ? <VerificationAdmin api={api} refreshKey={refreshKey} onCountChange={setPending} />
+        : <PayoutsAdmin api={api} refreshKey={refreshKey} />}
+    </div>
+  );
+}
+
+function payoutText(store) {
+  if (store.payout?.pix) return `${PIX_LABEL[store.payout.pix.type] || 'Pix'}: ${store.payout.pix.key}`;
+  return store.payout_info || '';
+}
+
+function PayoutsAdmin({ api, refreshKey }) {
   const [data, setData] = useState(null);
   const [payouts, setPayouts] = useState([]);
   const [confirming, setConfirming] = useState(null); // store
@@ -88,14 +118,26 @@ export default function MarketAdmin({ api, refreshKey }) {
           <div key={s.id} style={{ ...st.row, opacity: s.status === 'active' ? 1 : 0.6 }}>
             <StoreAvatar store={s} size={40} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={st.storeName}>{s.name}{s.status !== 'active' && <span style={st.suspended}>suspensa</span>}</div>
+              <div style={st.storeName}>{s.name}
+                {s.status === 'suspended' && <span style={st.suspended}>suspensa</span>}
+                {s.status === 'pending' && <span style={{ ...st.suspended, color: 'var(--warn)', background: 'color-mix(in srgb, var(--warn) 14%, transparent)' }}>esperando verificação</span>}</div>
               <div style={st.meta}>
                 {s.owner ? `${s.owner.display_name || s.owner.username}#${s.owner.tag}` : '—'} · {s.summary.orders} venda(s)
               </div>
-              <button type="button" style={st.pix} onClick={() => s.payout_info && copy(s.payout_info, s.id)} title="Copiar">
-                Pix: {s.payout_info || <em style={{ color: 'var(--warn)' }}>não informado</em>}
-                {copied === s.id && <span style={{ color: 'var(--success)' }}> · copiado</span>}
-              </button>
+              {s.can_receive && payoutText(s) ? (
+                <button type="button" style={st.pix} onClick={() => copy(s.payout?.pix?.key || s.payout_info, s.id)} title="Copiar chave Pix">
+                  {s.payout?.pix ? '' : 'Pix: '}{payoutText(s)}
+                  {s.payout?.verified && <span style={st.verified}><ShieldCheckIcon size={11} /> verificada</span>}
+                  {copied === s.id && <span style={{ color: 'var(--success)' }}> · copiado</span>}
+                </button>
+              ) : (
+                <div style={{ ...st.pix, color: 'var(--warn)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <AlertIcon size={12} /> {s.verification_status === 'pending' ? 'Verificação em análise' : 'Vendedor ainda não verificado'}
+                </div>
+              )}
+              {s.can_receive && s.payout?.bank && (
+                <div style={st.meta}>{s.payout.bank.bank_name} · ag {s.payout.bank.agency} · conta {s.payout.bank.account}-{s.payout.bank.account_digit} · {s.payout.bank.holder_name}</div>
+              )}
             </div>
             <div style={st.money}>
               <div style={st.moneyMain}>{brl(s.summary.available_cents)}</div>
@@ -103,7 +145,7 @@ export default function MarketAdmin({ api, refreshKey }) {
               <div style={st.meta}>já repassado {brl(s.summary.paid_out_cents)}</div>
             </div>
             <div style={st.actions}>
-              <button type="button" style={{ ...ui.btnPrimary, opacity: s.summary.available_cents > 0 ? 1 : 0.4 }} disabled={s.summary.available_cents <= 0} onClick={() => setConfirming(s)}>
+              <button type="button" style={{ ...ui.btnPrimary, opacity: s.summary.available_cents > 0 && s.can_receive ? 1 : 0.4 }} disabled={s.summary.available_cents <= 0 || !s.can_receive} onClick={() => setConfirming(s)}>
                 Registrar repasse
               </button>
               <button type="button" style={ui.btnDanger} onClick={() => toggleStatus(s)}>
@@ -139,7 +181,12 @@ export default function MarketAdmin({ api, refreshKey }) {
               <div style={st.meta}>Pagar para</div>
               <div style={st.storeName}>{confirming.name}</div>
               <div style={{ ...st.moneyMain, fontSize: 26, margin: '6px 0' }}>{brl(confirming.summary.available_cents)}</div>
-              <div style={st.meta}>Pix: <strong style={{ color: 'var(--text-hi)' }}>{confirming.payout_info || 'não informado'}</strong></div>
+              <div style={st.meta}>Pix: <strong style={{ color: 'var(--text-hi)' }}>{payoutText(confirming) || 'não informado'}</strong></div>
+              {confirming.payout?.bank && (
+                <div style={{ ...st.meta, marginTop: 4 }}>
+                  Titular: <strong style={{ color: 'var(--text-hi)' }}>{confirming.payout.bank.holder_name}</strong> · {confirming.payout.bank.holder_document_formatted}
+                </div>
+              )}
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--text-mid)', lineHeight: 1.5 }}>
               Só confirme depois de fazer o Pix. Esse valor sai do saldo da loja e o vendedor é avisado.
@@ -158,6 +205,11 @@ export default function MarketAdmin({ api, refreshKey }) {
 }
 
 const st = {
+  adminTabs: { display: 'flex', gap: 6, marginBottom: 16 },
+  adminTab: { display: 'inline-flex', alignItems: 'center', gap: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-mid)', fontSize: 13.5, fontWeight: 650, padding: '9px 15px', borderRadius: 13, cursor: 'pointer', fontFamily: 'inherit' },
+  adminTabActive: { background: 'var(--accent)', border: '1px solid var(--accent)', color: 'var(--accent-contrast, #fff)' },
+  badge: { fontSize: 11, fontWeight: 800, background: 'var(--warn)', color: '#1a1300', borderRadius: 999, padding: '1px 7px' },
+  verified: { display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 7, fontSize: 11, fontWeight: 650, color: 'var(--success)' },
   hint: { color: 'var(--text-low)', fontSize: 13, padding: '18px 0', textAlign: 'center' },
   tiles: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 },
   tile: { ...ui.card, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 },

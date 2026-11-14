@@ -19,6 +19,7 @@ const shopRoutes = require('./routes/shopRoutes');
 const marketRoutes = require('./routes/marketRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const userRoutes = require('./routes/userRoutes');
+const verificationRoutes = require('./routes/verificationRoutes');
 const { attachRealtime } = require('./realtime');
 const { isSmtpConfigured } = require('./mailer');
 
@@ -54,6 +55,7 @@ app.use('/api/dms', dmRoutes);
 app.use('/api/spotify', spotifyRoutes);
 app.use('/api/badges', badgeRoutes);
 app.use('/api/shop', shopRoutes);
+app.use('/api/market/verification', verificationRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/users', userRoutes);

@@ -3,7 +3,8 @@ const B = 'http://localhost:4000/api', MP = 'http://localhost:4999', SECRET = 's
 let n = 0, fails = 0;
 const ok = (c, l) => { n++; console.log(`${n}) ${l}: ${c ? 'OK' : 'FALHOU'}`); if (!c) fails++; };
 const req = async (m, p, body, t, headers = {}) => {
-  const r = await fetch(B + p, { method: m, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(t ? { Authorization: `Bearer ${t}` } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+  const isForm = body instanceof FormData;
+  const r = await fetch(B + p, { method: m, headers: { ...(body && !isForm ? { 'Content-Type': 'application/json' } : {}), ...(t ? { Authorization: `Bearer ${t}` } : {}), ...headers }, body: body ? (isForm ? body : JSON.stringify(body)) : undefined });
   let d = {}; try { d = await r.json(); } catch {} return { s: r.status, d };
 };
 const pay = (reference, status) => fetch(MP + '/__pay', { method: 'POST', body: JSON.stringify({ reference, status }) }).then((r) => r.json());
@@ -15,8 +16,9 @@ const webhook = (id, { secret = SECRET, tamper = false } = {}) => {
     { 'x-signature': sign(tamper ? id + 1 : id, reqId, ts, secret), 'x-request-id': reqId });
 };
 const rnd = () => Math.random().toString(36).slice(2, 7);
-async function user(name) {
-  const r = await req('POST', '/auth/register', { username: name + rnd(), password: 'senha123', email: `${name}${rnd()}@t.com` });
+const { openVerifiedStore } = require('./helpers/kyc');
+async function user(name, email) {
+  const r = await req('POST', '/auth/register', { username: name + rnd(), password: 'senha123', email: email || `${name}${rnd()}@t.com` });
   await req('POST', '/auth/verify-email', { code: r.d.verification?.devCode }, r.d.token);
   return r.d.token;
 }
@@ -25,7 +27,8 @@ const addr = { name: 'Ana', cep: '01310100', street: 'Av. Paulista', number: '10
   const seller = await user('vend'), buyer = await user('comp');
   const cfg = (await req('GET', '/market/config', null, buyer)).d;
   ok(cfg.provider === 'Mercado Pago' && cfg.paymentsEnabled && !cfg.devPayments, 'Mercado Pago ativo (sem modo de teste)');
-  await req('POST', '/market/my-store', { name: 'Loja MP' }, seller);
+  const admin = await user('adm', 'admin@t.com'); // servidor com ADMIN_EMAILS=admin@t.com
+  await openVerifiedStore(req, seller, admin, { name: 'Loja MP' });
   const phys = (await req('POST', '/market/products', { title: 'Caneca', type: 'physical', price_cents: 5000, shipping_cents: 1500, stock: 5 }, seller)).d.product;
 
   const co = await req('POST', '/market/checkout', { productId: phys.id, quantity: 2, address: addr }, buyer);

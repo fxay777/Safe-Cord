@@ -7,12 +7,15 @@ import {
   brl, parseBRL, centsToInput, StatusPill, TypeBadge, ProductImage, StoreAvatar, formatDate, errorText, ui,
 } from './marketUtils';
 import { resolveAssetUrl } from '../../api';
+import SellerOnboarding, { VerificationBanner } from './SellerOnboarding';
+import { ShieldCheckIcon, BankIcon } from '../Icons';
 
 export default function SellerDashboard({ api, user, config, refreshKey, onOpenProduct }) {
   const [data, setData] = useState(null); // { store, products, summary }
   const [error, setError] = useState('');
   const [section, setSection] = useState('produtos'); // produtos | pedidos | config
   const [editing, setEditing] = useState(null); // null | 'new' | product
+  const [wizard, setWizard] = useState(false); // passo a passo da verificação aberto
 
   const load = useCallback(() => {
     api.get('/market/my-store').then(({ data: d }) => { setData(d); setError(''); })
@@ -21,18 +24,38 @@ export default function SellerDashboard({ api, user, config, refreshKey, onOpenP
   useEffect(() => { load(); }, [load, refreshKey]);
 
   if (!data) return error ? <div style={ui.error}>{error}</div> : <div style={s.hint}>Carregando…</div>;
-  if (!data.store) return <OpenStore api={api} user={user} config={config} onCreated={load} />;
+  const needsVerification = data.store?.requires_verification && data.verification?.status !== 'approved';
+  if (!data.store || wizard) {
+    return (
+      <SellerOnboarding
+        key="wizard"
+        api={api}
+        user={user}
+        store={data.store}
+        verification={data.verification}
+        onChanged={() => { setWizard(true); load(); }}
+        onExit={data.store ? () => { setWizard(false); load(); } : null}
+      />
+    );
+  }
 
   const { store, products, summary } = data;
   const banner = resolveAssetUrl(store.banner_url);
 
   return (
     <div style={{ maxWidth: 1000 }}>
+      {needsVerification && <VerificationBanner v={data.verification} onOpen={() => setWizard(true)} />}
       <div style={{ ...s.storeHeader, ...(banner ? { backgroundImage: `linear-gradient(90deg, rgba(5,10,22,0.85), rgba(5,10,22,0.35)), url(${banner})` } : {}) }}>
         <StoreAvatar store={store} size={58} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={s.storeName}>{store.name}</div>
-          <div style={s.storeMeta}>{store.product_count} produto(s) à venda · {store.sales_count} venda(s){store.status === 'suspended' ? ' · LOJA SUSPENSA' : ''}</div>
+          <div style={s.storeName}>
+            {store.name}
+            {store.verified && store.requires_verification && <span style={s.verifiedTag}><ShieldCheckIcon size={12} /> Verificada</span>}
+          </div>
+          <div style={s.storeMeta}>
+            {store.status === 'pending' ? 'Escondida até a verificação ser aprovada' : `${store.product_count} produto(s) à venda`} · {store.sales_count} venda(s)
+            {store.status === 'suspended' ? ' · LOJA SUSPENSA' : ''}
+          </div>
         </div>
         <button type="button" style={{ ...ui.btnPrimary, background: '#fff', color: '#0B1630' }} onClick={() => setEditing('new')}>
           <PlusIcon size={15} /> Novo produto
@@ -47,7 +70,7 @@ export default function SellerDashboard({ api, user, config, refreshKey, onOpenP
       </div>
       <div style={s.feeNote}>
         O SafeCord fica com {config?.feePercent ?? 10}% do valor dos produtos (o frete é todo seu). Produto digital libera na hora;
-        físico libera quando o comprador confirma o recebimento (ou 14 dias depois do envio). O repasse é feito pela chave Pix das configurações.
+        físico libera quando o comprador confirma o recebimento (ou 14 dias depois do envio). O repasse vai pra conta/Pix verificados.
       </div>
 
       <div style={s.sectionTabs}>
@@ -92,7 +115,7 @@ export default function SellerDashboard({ api, user, config, refreshKey, onOpenP
       )}
 
       {section === 'pedidos' && <StoreOrders api={api} refreshKey={refreshKey} onChanged={load} />}
-      {section === 'config' && <StoreSettings api={api} store={store} onSaved={load} />}
+      {section === 'config' && <StoreSettings api={api} store={store} verification={data.verification} config={config} onSaved={load} onOpenVerification={() => setWizard(true)} />}
 
       {editing && (
         <ProductEditor
@@ -114,71 +137,6 @@ function Tile({ icon, label, value, accent, highlight }) {
       <span style={{ ...s.tileIcon, ...(accent ? { background: 'rgba(255,255,255,0.18)', color: '#fff' } : {}) }}>{icon}</span>
       <div style={{ ...s.tileValue, ...(accent ? { color: '#fff' } : {}) }}>{value}</div>
       <div style={{ ...s.tileLabel, ...(accent ? { color: 'rgba(255,255,255,0.8)' } : {}) }}>{label}</div>
-    </div>
-  );
-}
-
-// ─── Abrir loja ─────────────────────────────────────────────────────────────
-function OpenStore({ api, user, config, onCreated }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [payout, setPayout] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  async function create() {
-    setBusy(true);
-    setError('');
-    try {
-      await api.post('/market/my-store', { name, description, payout_info: payout });
-      onCreated();
-    } catch (err) {
-      setError(errorText(err, 'Não foi possível abrir a loja'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div style={s.openWrap}>
-      <div style={s.openPitch}>
-        <span style={s.openIcon}><StoreIcon size={30} /></span>
-        <div style={s.openTitle}>Abra sua loja no SafeCord</div>
-        <div style={s.openText}>Venda pra comunidade sem precisar de site próprio. Você cadastra, a gente cuida do pagamento e te repassa.</div>
-        <div style={s.steps}>
-          {[
-            ['Cadastre', 'Produtos físicos (com frete e estoque) ou digitais (arquivos, cursos, presets…)'],
-            ['Venda', 'O comprador paga pelo SafeCord. Digital é entregue na hora, automático.'],
-            ['Receba', `Saldo repassado por Pix. Taxa de ${config?.feePercent ?? 10}% só quando vende.`],
-          ].map(([t, d], i) => (
-            <div key={t} style={s.step}>
-              <span style={s.stepNum}>{i + 1}</span>
-              <div><div style={s.stepTitle}>{t}</div><div style={s.stepText}>{d}</div></div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={s.openForm}>
-        {!user?.email_verified && <div style={{ ...ui.error, color: 'var(--warn)', background: 'color-mix(in srgb, var(--warn) 12%, transparent)' }}>Confirme seu email pra poder abrir uma loja.</div>}
-        <div>
-          <label style={ui.label}>Nome da loja</label>
-          <input style={ui.input} value={name} maxLength={50} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Doces da Ana" />
-        </div>
-        <div>
-          <label style={ui.label}>Sobre a loja</label>
-          <textarea style={{ ...ui.input, resize: 'none', lineHeight: 1.5 }} rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="O que você vende, prazo de produção, cidade…" />
-        </div>
-        <div>
-          <label style={ui.label}>Chave Pix pra receber</label>
-          <input style={ui.input} value={payout} maxLength={300} onChange={(e) => setPayout(e.target.value)} placeholder="CPF, email, telefone ou chave aleatória" />
-          <div style={s.fieldHint}>Só você e a equipe do SafeCord veem. Dá pra mudar depois.</div>
-        </div>
-        {error && <div style={ui.error}>{error}</div>}
-        <button type="button" style={{ ...ui.btnPrimary, padding: '12px 18px' }} disabled={busy || !name.trim()} onClick={create}>
-          {busy ? 'Abrindo…' : 'Abrir minha loja'}
-        </button>
-      </div>
     </div>
   );
 }
@@ -509,19 +467,30 @@ function StoreOrders({ api, refreshKey, onChanged }) {
 }
 
 // ─── Configurações da loja ──────────────────────────────────────────────────
-function StoreSettings({ api, store, onSaved }) {
+const CATEGORIES = ['Moda e acessórios', 'Arte e design', 'Games', 'Cursos e e-books', 'Música', 'Tecnologia', 'Artesanato', 'Beleza', 'Comida', 'Serviços digitais', 'Outros'];
+const PIX_LABEL = { cpf: 'CPF', cnpj: 'CNPJ', email: 'Email', phone: 'Celular', random: 'Chave aleatória' };
+
+function StoreSettings({ api, store, verification, onSaved, onOpenVerification }) {
   const [name, setName] = useState(store.name);
   const [description, setDescription] = useState(store.description);
+  const [category, setCategory] = useState(store.category || '');
+  const [email, setEmail] = useState(store.contact_email || '');
+  const [phone, setPhone] = useState(store.contact_phone || '');
   const [payout, setPayout] = useState(store.payout_info || '');
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const legacy = !store.requires_verification;
+  const vd = verification?.data || {};
 
   async function save() {
     setBusy(true); setError(''); setMsg('');
     try {
-      await api.put('/market/my-store', { name, description, payout_info: payout });
+      await api.put('/market/my-store', {
+        name, description, category, contact_email: email, contact_phone: phone,
+        ...(legacy ? { payout_info: payout } : {}),
+      });
       setMsg('Salvo!');
       onSaved();
     } catch (err) {
@@ -549,34 +518,86 @@ function StoreSettings({ api, store, onSaved }) {
   }
 
   return (
-    <div style={{ ...ui.card, padding: 18, display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 620 }}>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <label style={ui.btnGhost}>
-          <ImageIcon size={14} /> {uploading === 'logo' ? 'Enviando…' : 'Trocar logo'}
-          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => upload('logo', e)} />
-        </label>
-        <label style={ui.btnGhost}>
-          <ImageIcon size={14} /> {uploading === 'banner' ? 'Enviando…' : 'Trocar banner'}
-          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => upload('banner', e)} />
-        </label>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+      <div style={{ ...ui.card, padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <label style={ui.btnGhost}>
+            <ImageIcon size={14} /> {uploading === 'logo' ? 'Enviando…' : 'Trocar logo'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => upload('logo', e)} />
+          </label>
+          <label style={ui.btnGhost}>
+            <ImageIcon size={14} /> {uploading === 'banner' ? 'Enviando…' : 'Trocar banner'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => upload('banner', e)} />
+          </label>
+        </div>
+        <div>
+          <label style={ui.label}>Nome da loja</label>
+          <input style={ui.input} value={name} maxLength={50} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div>
+          <label style={ui.label}>Categoria</label>
+          <select style={ui.input} value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">Sem categoria</option>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={ui.label}>Sobre a loja</label>
+          <textarea style={{ ...ui.input, resize: 'none', lineHeight: 1.5 }} rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div>
+            <label style={ui.label}>Email de contato</label>
+            <input style={ui.input} value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div>
+            <label style={ui.label}>WhatsApp / telefone</label>
+            <input style={ui.input} value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+        </div>
+        {legacy && (
+          <div>
+            <label style={ui.label}>Chave Pix pra receber os repasses</label>
+            <input style={ui.input} value={payout} maxLength={300} onChange={(e) => setPayout(e.target.value)} />
+            <div style={s.fieldHint}>Loja antiga: dá pra fazer a verificação completa a qualquer momento.</div>
+          </div>
+        )}
+        {error && <div style={ui.error}>{error}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button type="button" style={ui.btnPrimary} disabled={busy} onClick={save}>{busy ? 'Salvando…' : 'Salvar'}</button>
+          {msg && <span style={{ fontSize: 13, color: 'var(--success)' }}>{msg}</span>}
+        </div>
       </div>
-      <div>
-        <label style={ui.label}>Nome da loja</label>
-        <input style={ui.input} value={name} maxLength={50} onChange={(e) => setName(e.target.value)} />
-      </div>
-      <div>
-        <label style={ui.label}>Sobre a loja</label>
-        <textarea style={{ ...ui.input, resize: 'none', lineHeight: 1.5 }} rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-      <div>
-        <label style={ui.label}>Chave Pix pra receber os repasses</label>
-        <input style={ui.input} value={payout} maxLength={300} onChange={(e) => setPayout(e.target.value)} />
-        <div style={s.fieldHint}>Só você e a equipe do SafeCord veem.</div>
-      </div>
-      {error && <div style={ui.error}>{error}</div>}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button type="button" style={ui.btnPrimary} disabled={busy} onClick={save}>{busy ? 'Salvando…' : 'Salvar'}</button>
-        {msg && <span style={{ fontSize: 13, color: 'var(--success)' }}>{msg}</span>}
+
+      <div style={{ ...ui.card, padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={s.payIcon}><BankIcon size={18} /></span>
+          <div>
+            <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text-hi)' }}>Recebimento</div>
+            <div style={{ fontSize: 12, color: 'var(--text-low)' }}>Pra onde vai o dinheiro das suas vendas</div>
+          </div>
+        </div>
+        {vd.bank ? (
+          <div style={s.payBox}>
+            <div style={s.payRow}><span>Banco</span><strong>{vd.bank.bank_name}</strong></div>
+            <div style={s.payRow}><span>Agência / conta</span><strong>{vd.bank.agency} / {vd.bank.account}</strong></div>
+            <div style={s.payRow}><span>Titular</span><strong>{vd.bank.holder_name}</strong></div>
+            {vd.pix && <div style={s.payRow}><span>Pix ({PIX_LABEL[vd.pix.type] || vd.pix.type})</span><strong>{vd.pix.key}</strong></div>}
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>Você ainda não cadastrou uma conta verificada.</div>
+        )}
+        <div style={{ fontSize: 12, color: 'var(--text-low)', lineHeight: 1.5 }}>
+          {verification?.status === 'approved'
+            ? 'Conta verificada. Pra trocar de conta, fale com o suporte do SafeCord — por segurança, ela passa por uma nova verificação.'
+            : verification?.status === 'pending' ? 'Em análise pela equipe do SafeCord.' : 'Complete a verificação pra liberar os repasses.'}
+        </div>
+        {['draft', 'rejected'].includes(verification?.status) && (
+          <button type="button" style={ui.btnPrimary} onClick={onOpenVerification}><ShieldCheckIcon size={15} /> {legacy ? 'Verificar minha loja' : 'Continuar verificação'}</button>
+        )}
+        <div style={s.futureMini}>
+          <strong style={{ color: 'var(--text-hi)' }}>Em breve:</strong> conectar sua conta do Mercado Pago e receber cada venda direto, na hora.
+        </div>
       </div>
     </div>
   );
@@ -589,7 +610,12 @@ const s = {
     background: 'linear-gradient(120deg, color-mix(in srgb, var(--accent) 85%, #050A16), color-mix(in srgb, var(--accent) 35%, #0A1430))',
     backgroundSize: 'cover', backgroundPosition: 'center', color: '#fff',
   },
-  storeName: { fontSize: 20, fontWeight: 750, letterSpacing: -0.3 },
+  storeName: { fontSize: 20, fontWeight: 750, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  verifiedTag: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, background: 'rgba(255,255,255,0.18)', borderRadius: 999, padding: '3px 9px', letterSpacing: 0 },
+  payIcon: { width: 38, height: 38, borderRadius: 12, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  payBox: { background: 'var(--bg-elevated)', borderRadius: 14, padding: '6px 12px' },
+  payRow: { display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, color: 'var(--text-low)', padding: '6px 0', borderBottom: '1px solid var(--border)' },
+  futureMini: { fontSize: 12, color: 'var(--text-low)', lineHeight: 1.5, border: '1px dashed var(--border)', borderRadius: 12, padding: '9px 11px' },
   storeMeta: { fontSize: 12.5, opacity: 0.85, marginTop: 2 },
   tiles: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 },
   tile: { ...ui.card, padding: '14px 14px 12px', display: 'flex', flexDirection: 'column', gap: 4 },

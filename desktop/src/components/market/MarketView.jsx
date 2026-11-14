@@ -36,10 +36,12 @@ export default function MarketView({ api, socket, user }) {
     socket.on('market:new-order', bump);
     socket.on('market:order-updated', bump);
     socket.on('market:payout', bump);
+    socket.on('market:verification', bump);
     return () => {
       socket.off('market:new-order', bump);
       socket.off('market:order-updated', bump);
       socket.off('market:payout', bump);
+      socket.off('market:verification', bump);
     };
   }, [socket]);
 
@@ -47,7 +49,7 @@ export default function MarketView({ api, socket, user }) {
     ['explorar', 'Explorar', TagIcon],
     ['compras', 'Minhas compras', PackageIcon],
     ['loja', 'Minha loja', StoreIcon],
-    ...(config?.isAdmin ? [['admin', 'Repasses', WalletIcon]] : []),
+    ...(config?.isAdmin ? [['admin', 'Admin', ShieldCheckIcon]] : []),
   ];
 
   return (
@@ -305,7 +307,7 @@ function ProductModal({ api, productId, userId, onClose, onBuy, onOpenStore, onO
                 <button type="button" style={styles.storeRow} onClick={() => onOpenStore(store.id)}>
                   <StoreAvatar store={store} size={38} />
                   <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                    <div style={styles.storeRowName}>{store.name}</div>
+                    <div style={styles.storeRowName}>{store.name}{store.verified && <VerifiedBadge />}</div>
                     <div style={styles.storeRowMeta}>
                       por {store.owner?.display_name || store.owner?.username} · {store.sales_count} venda(s)
                     </div>
@@ -371,7 +373,7 @@ function StoreModal({ api, storeId, onClose, onOpenProduct }) {
             <div style={styles.storeHead}>
               <div style={styles.storeLogoWrap}><StoreAvatar store={data.store} size={76} /></div>
               <div style={{ minWidth: 0 }}>
-                <div style={styles.storeName}>{data.store.name}</div>
+                <div style={styles.storeName}>{data.store.name}{data.store.verified && <VerifiedBadge light />}</div>
                 <div style={styles.storeMeta}>
                   por {data.store.owner?.display_name || data.store.owner?.username} · {data.store.product_count} produto(s) · {data.store.sales_count} venda(s)
                 </div>
@@ -855,3 +857,19 @@ const styles = {
   orderActions: { display: 'flex', gap: 8, flexShrink: 0 },
   tracking: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-mid)' },
 };
+
+function VerifiedBadge({ light }) {
+  return (
+    <span
+      title="O SafeCord conferiu o documento, o rosto e a conta bancária desse vendedor"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 7, fontSize: 11, fontWeight: 700, verticalAlign: 'middle',
+        color: light ? '#fff' : 'var(--success)',
+        background: light ? 'rgba(255,255,255,0.18)' : 'color-mix(in srgb, var(--success) 13%, transparent)',
+        borderRadius: 999, padding: '2px 8px',
+      }}
+    >
+      <ShieldCheckIcon size={11} /> Verificado
+    </span>
+  );
+}

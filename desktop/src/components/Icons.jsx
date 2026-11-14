@@ -667,3 +667,39 @@ export function TagIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+export function IdCardIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2.5" {...stroke} />
+      <circle cx="8.6" cy="11" r="2" {...stroke} />
+      <path d="M5.8 16c.5-1.4 1.6-2.1 2.8-2.1s2.3.7 2.8 2.1M14 10h4M14 13.5h3" {...stroke} />
+    </svg>
+  );
+}
+
+export function BankIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M3.5 9 12 4.5 20.5 9M5 9.5h14M6.5 10v7M10 10v7M14 10v7M17.5 10v7M4 19.5h16" {...stroke} />
+    </svg>
+  );
+}
+
+export function FaceScanIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" {...stroke} />
+      <path d="M9 10v.5M15 10v.5M12 10v3h-1M9.5 15.5c1.4 1 3.6 1 5 0" {...stroke} />
+    </svg>
+  );
+}
+
+export function ClockIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <circle cx="12" cy="12" r="8.5" {...stroke} />
+      <path d="M12 7.5V12l3 2" {...stroke} />
+    </svg>
+  );
+}

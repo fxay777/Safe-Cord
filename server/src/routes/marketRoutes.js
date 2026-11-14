@@ -4,6 +4,9 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth } = require('../auth');
 const { getPublicUser } = require('../userUtils');
+const { isAdmin, requireAdmin } = require('../adminUtils');
+const kyc = require('../sellerVerification');
+const br = require('../brValidators');
 const {
   upload, uploadDigital, saveProductImage, saveStoreImage, digitalFilePath, removeIfLocalUpload, MAX_DIGITAL_BYTES,
 } = require('../uploads');
@@ -21,8 +24,6 @@ const APP_URL = payments.APP_URL;
 const FEE_PERCENT = Math.min(Math.max(Number(process.env.MARKET_FEE_PERCENT ?? 10), 0), 50);
 // Pagamento simulado, só pra testar a loja localmente sem provedor. Nunca ativa se o Mercado Pago (ou Stripe) estiver configurado.
 const DEV_PAYMENTS = !payments.provider() && process.env.MARKET_DEV_PAYMENTS === '1';
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
-  .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 const RELEASE_DAYS_AFTER_SHIP = 14; // físico enviado e não confirmado: libera o saldo depois disso
 
 const paymentsOn = () => Boolean(payments.provider());
@@ -33,11 +34,6 @@ const MAX_IMAGES = 6;
 const MAX_QTY = 20;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-function isAdmin(userId) {
-  if (!ADMIN_EMAILS.length) return false;
-  const u = db.prepare('SELECT email, email_verified FROM users WHERE id = ?').get(userId);
-  return Boolean(u?.email && u.email_verified && ADMIN_EMAILS.includes(u.email.toLowerCase()));
-}
 
 function parseJSON(text, fallback) {
   try { return text ? JSON.parse(text) : fallback; } catch { return fallback; }
@@ -68,6 +64,8 @@ function publicStore(row, { includePrivate = false } = {}) {
     logo_url: row.logo_url,
     banner_url: row.banner_url,
     status: row.status,
+    category: row.category || '',
+    verified: !row.requires_verification || kyc.isApproved(row.owner_id),
     created_at: row.created_at,
     owner: owner ? {
       id: owner.id, username: owner.username, tag: owner.tag, display_name: owner.display_name,
@@ -75,7 +73,12 @@ function publicStore(row, { includePrivate = false } = {}) {
     } : null,
     product_count: stats.products,
     sales_count: sales.n,
-    ...(includePrivate ? { payout_info: row.payout_info } : {}),
+    ...(includePrivate ? {
+      payout_info: row.payout_info,
+      contact_email: row.contact_email,
+      contact_phone: row.contact_phone,
+      requires_verification: Boolean(row.requires_verification),
+    } : {}),
   };
 }
 
@@ -289,36 +292,54 @@ function sellerSummary(storeId) {
 
 router.get('/my-store', (req, res) => {
   const row = myStore(req.user.id);
-  if (!row) return res.json({ store: null });
+  if (!row) return res.json({ store: null, verification: kyc.ownerView(req.user.id) });
   const products = db.prepare('SELECT * FROM products WHERE store_id = ? ORDER BY created_at DESC').all(row.id);
   res.json({
     store: publicStore(row, { includePrivate: true }),
     products: products.map((p) => publicProduct(p, { forOwner: true })),
     summary: sellerSummary(row.id),
+    verification: kyc.ownerView(req.user.id),
   });
 });
+
+function readStoreBody(body, current = {}) {
+  const name = body.name !== undefined ? String(body.name).trim().slice(0, 50) : current.name;
+  if (!name || name.length < 2) return { error: 'Dê um nome pra sua loja (2 letras ou mais)' };
+  const description = body.description !== undefined ? String(body.description).trim().slice(0, 500) : (current.description || '');
+  const category = body.category !== undefined ? String(body.category) : (current.category || '');
+  if (category && !kyc.STORE_CATEGORIES.includes(category)) return { error: 'Categoria inválida' };
+  const email = body.contact_email !== undefined ? String(body.contact_email).trim().toLowerCase().slice(0, 120) : (current.contact_email || '');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: 'Email de contato inválido' };
+  const phone = body.contact_phone !== undefined ? br.onlyDigits(body.contact_phone) : (current.contact_phone || '');
+  if (phone && !br.isValidPhone(phone)) return { error: 'Telefone de contato inválido — use DDD + número' };
+  const payout = body.payout_info !== undefined ? String(body.payout_info).trim().slice(0, 300) : (current.payout_info || '');
+  return { name, description, category, contact_email: email, contact_phone: phone, payout_info: payout };
+}
 
 router.post('/my-store', (req, res) => {
   if (myStore(req.user.id)) return res.status(409).json({ error: 'Você já tem uma loja' });
   const me = db.prepare('SELECT email_verified FROM users WHERE id = ?').get(req.user.id);
   if (!me?.email_verified) return res.status(403).json({ error: 'Confirme seu email antes de abrir uma loja' });
-  const name = String(req.body?.name || '').trim().slice(0, 50);
-  if (name.length < 2) return res.status(400).json({ error: 'Dê um nome pra sua loja' });
+  const body = readStoreBody(req.body || {});
+  if (body.error) return res.status(400).json({ error: body.error });
+  if (!body.category) return res.status(400).json({ error: 'Escolha a categoria da loja' });
+  if (body.description.length < 20) return res.status(400).json({ error: 'Conte um pouco sobre a loja (20 letras ou mais)' });
   const id = uuidv4();
-  db.prepare('INSERT INTO stores (id, owner_id, name, description, payout_info, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, req.user.id, name, String(req.body?.description || '').trim().slice(0, 500),
-      String(req.body?.payout_info || '').trim().slice(0, 300), Date.now());
-  res.status(201).json({ store: publicStore(myStore(req.user.id), { includePrivate: true }) });
+  // Loja nova fica escondida (pending) até a verificação do vendedor ser aprovada
+  const status = kyc.isApproved(req.user.id) ? 'active' : 'pending';
+  db.prepare(`INSERT INTO stores (id, owner_id, name, description, category, contact_email, contact_phone, payout_info,
+    status, requires_verification, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`)
+    .run(id, req.user.id, body.name, body.description, body.category, body.contact_email, body.contact_phone, body.payout_info, status, Date.now());
+  res.status(201).json({ store: publicStore(myStore(req.user.id), { includePrivate: true }), verification: kyc.ownerView(req.user.id) });
 });
 
 router.put('/my-store', (req, res) => {
   const row = myStore(req.user.id);
   if (!row) return res.status(404).json({ error: 'Você ainda não tem loja' });
-  const name = req.body?.name !== undefined ? String(req.body.name).trim().slice(0, 50) : row.name;
-  if (name.length < 2) return res.status(400).json({ error: 'Nome muito curto' });
-  const description = req.body?.description !== undefined ? String(req.body.description).trim().slice(0, 500) : row.description;
-  const payout = req.body?.payout_info !== undefined ? String(req.body.payout_info).trim().slice(0, 300) : row.payout_info;
-  db.prepare('UPDATE stores SET name = ?, description = ?, payout_info = ? WHERE id = ?').run(name, description, payout, row.id);
+  const body = readStoreBody(req.body || {}, row);
+  if (body.error) return res.status(400).json({ error: body.error });
+  db.prepare('UPDATE stores SET name = ?, description = ?, category = ?, contact_email = ?, contact_phone = ?, payout_info = ? WHERE id = ?')
+    .run(body.name, body.description, body.category, body.contact_email, body.contact_phone, body.payout_info, row.id);
   res.json({ store: publicStore(myStore(req.user.id), { includePrivate: true }) });
 });
 
@@ -602,14 +623,20 @@ router.get('/orders/:id/download', (req, res) => {
 });
 
 // ─── admin: repasses ────────────────────────────────────────────────────────
-function requireAdmin(req, res, next) {
-  if (!isAdmin(req.user.id)) return res.status(403).json({ error: 'Só administradores do SafeCord' });
-  next();
+// Pra onde mandar o dinheiro: conta/Pix verificados; lojas antigas (antes da verificação) usam o texto livre.
+function canReceivePayout(store) {
+  return !store.requires_verification || kyc.isApproved(store.owner_id);
 }
 
 router.get('/admin/overview', requireAdmin, (req, res) => {
   const stores = db.prepare('SELECT * FROM stores ORDER BY created_at DESC').all();
-  const list = stores.map((s) => ({ ...publicStore(s, { includePrivate: true }), summary: sellerSummary(s.id) }));
+  const list = stores.map((s) => ({
+    ...publicStore(s, { includePrivate: true }),
+    summary: sellerSummary(s.id),
+    payout: kyc.payoutDestination(s.owner_id),
+    verification_status: kyc.getRow(s.owner_id)?.status || (s.requires_verification ? 'draft' : 'legacy'),
+    can_receive: canReceivePayout(s),
+  }));
   const totals = db.prepare(
     "SELECT COALESCE(SUM(total_cents),0) AS gross, COALESCE(SUM(fee_cents),0) AS fees, COUNT(*) AS n FROM orders WHERE status IN ('paid','shipped','delivered')"
   ).get();
@@ -628,6 +655,7 @@ router.get('/admin/overview', requireAdmin, (req, res) => {
 router.post('/admin/payouts', requireAdmin, (req, res) => {
   const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.body?.storeId);
   if (!store) return res.status(404).json({ error: 'Loja não encontrada' });
+  if (!canReceivePayout(store)) return res.status(409).json({ error: 'O vendedor ainda não foi verificado — sem conta bancária confirmada pra receber' });
   const now = Date.now();
   const payout = db.transaction(() => {
     const rows = db.prepare(
@@ -655,9 +683,12 @@ router.get('/admin/payouts', requireAdmin, (req, res) => {
 });
 
 router.put('/admin/stores/:id/status', requireAdmin, (req, res) => {
-  const status = req.body?.status === 'suspended' ? 'suspended' : 'active';
-  const r = db.prepare('UPDATE stores SET status = ? WHERE id = ?').run(status, req.params.id);
-  if (!r.changes) return res.status(404).json({ error: 'Loja não encontrada' });
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.id);
+  if (!store) return res.status(404).json({ error: 'Loja não encontrada' });
+  let status = req.body?.status === 'suspended' ? 'suspended' : 'active';
+  // Reativar uma loja de vendedor não verificado volta pra "pending", não pra vitrine
+  if (status === 'active' && !canReceivePayout(store)) status = 'pending';
+  db.prepare('UPDATE stores SET status = ? WHERE id = ?').run(status, store.id);
   res.json({ status });
 });
 

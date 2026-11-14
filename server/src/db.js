@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS stores (
   logo_url TEXT,
   banner_url TEXT,
   payout_info TEXT NOT NULL DEFAULT '',   -- chave Pix / dados bancários (só o dono e o admin veem)
-  status TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'suspended'
+  status TEXT NOT NULL DEFAULT 'active',  -- 'pending' (esperando verificação) | 'active' | 'suspended'
   created_at INTEGER NOT NULL
 );
 
@@ -379,6 +379,65 @@ for (const table of ['purchases', 'orders']) {
   if (!cols.has('payment_provider')) db.exec(`ALTER TABLE ${table} ADD COLUMN payment_provider TEXT`);
 }
 ensureConversationColumns();
+
+// ─── Verificação de vendedores (KYC) ────────────────────────────────────────
+// Tudo que identifica a pessoa (CPF, endereço, banco) fica em data_enc, criptografado.
+// Documento, selfie e fotos da prova de vida ficam em private-files/kyc, também criptografados.
+db.exec(`
+CREATE TABLE IF NOT EXISTS seller_verifications (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'draft',      -- 'draft' | 'pending' | 'approved' | 'rejected'
+  person_type TEXT,                          -- 'pf' | 'pj'
+  data_enc TEXT,                             -- JSON criptografado: dados pessoais, empresa, endereço, banco, Pix
+  cpf_hash TEXT,                             -- HMAC do CPF (acha duplicado sem guardar aberto)
+  cnpj_hash TEXT,
+  doc_type TEXT,                             -- 'rg' | 'cnh' | 'rne' | 'passaporte'
+  files TEXT NOT NULL DEFAULT '{}',          -- {doc_front, doc_back, selfie, liveness:[...]} → nomes dos arquivos criptografados
+  liveness_at INTEGER,
+  terms_accepted_at INTEGER,
+  submitted_at INTEGER,
+  reviewed_at INTEGER,
+  reviewed_by TEXT,
+  reject_reason TEXT,
+  reject_sections TEXT NOT NULL DEFAULT '[]',
+  payout_mode TEXT NOT NULL DEFAULT 'manual', -- 'manual' (Pix pelo admin) | 'mercadopago' (futuro: recebe direto)
+  mp_user_id TEXT,                            -- futuro: conta Mercado Pago conectada (OAuth)
+  mp_connected_at INTEGER,
+  provider TEXT NOT NULL DEFAULT 'manual',    -- quem verificou: 'manual' ou um serviço (idwall, unico…)
+  provider_ref TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seller_verif_status ON seller_verifications(status);
+CREATE INDEX IF NOT EXISTS idx_seller_verif_cpf ON seller_verifications(cpf_hash);
+CREATE INDEX IF NOT EXISTS idx_seller_verif_cnpj ON seller_verifications(cnpj_hash);
+
+CREATE TABLE IF NOT EXISTS liveness_challenges (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  steps TEXT NOT NULL,                       -- JSON: ['frente', 'esquerda', ...]
+  frames TEXT NOT NULL DEFAULT '[]',         -- JSON: [{step, file, sha, at}]
+  created_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS verification_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,                      -- 'submitted' | 'approved' | 'rejected'
+  actor_id TEXT,
+  note TEXT,
+  created_at INTEGER NOT NULL
+);
+`);
+{
+  // Lojas novas só aparecem depois da verificação. Lojas antigas (antes disso) ficam com 0.
+  const cols = new Set(db.prepare('PRAGMA table_info(stores)').all().map((c) => c.name));
+  if (!cols.has('requires_verification')) db.exec('ALTER TABLE stores ADD COLUMN requires_verification INTEGER NOT NULL DEFAULT 0');
+  if (!cols.has('category')) db.exec("ALTER TABLE stores ADD COLUMN category TEXT NOT NULL DEFAULT ''");
+  if (!cols.has('contact_email')) db.exec("ALTER TABLE stores ADD COLUMN contact_email TEXT NOT NULL DEFAULT ''");
+  if (!cols.has('contact_phone')) db.exec("ALTER TABLE stores ADD COLUMN contact_phone TEXT NOT NULL DEFAULT ''");
+}
 
 // Ninguém está conectado quando o servidor acaba de subir. Sem isso, quem estava online
 // quando o servidor caiu/reiniciou ficava "online" pra sempre na lista de membros.
