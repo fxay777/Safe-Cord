@@ -30,3 +30,9 @@ node tests/profile.test.js
 rm -f safecord.db* && MARKET_DEV_PAYMENTS=1 ADMIN_EMAILS=admin@t.com node src/index.js &
 node tests/verification.test.js
 ```
+
+**Tickets e privacidade dos canais (servidor normal, banco zerado):**
+```bash
+rm -f safecord.db* && node src/index.js &
+NODE_PATH=../desktop/node_modules node tests/tickets.test.js
+```

@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../auth');
+const { canViewChannel } = require('../tickets');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -9,10 +10,13 @@ router.use(requireAuth);
 router.get('/:channelId', (req, res) => {
   const { channelId } = req.params;
   const before = req.query.before ? Number(req.query.before) : Date.now() + 1;
+  // Só quem pode ver o canal lê o histórico (antes qualquer pessoa logada lia com o id do canal)
+  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId);
+  if (!channel || !canViewChannel(channel, req.user.id)) return res.status(404).json({ error: 'Canal não encontrado' });
 
   const rows = db
     .prepare(
-      `SELECT m.id, m.content, m.created_at, m.attachments, u.id as author_id, u.username, u.tag, u.avatar_color,
+      `SELECT m.id, m.content, m.created_at, m.attachments, m.kind, m.meta, u.id as author_id, u.username, u.tag, u.avatar_color,
               u.display_name, u.avatar_url, u.banner_url, u.bio
        FROM messages m JOIN users u ON u.id = m.author_id
        WHERE m.channel_id = ? AND m.created_at < ?
@@ -26,7 +30,9 @@ router.get('/:channelId', (req, res) => {
       const parsed = JSON.parse(r.attachments || '[]');
       attachments = Array.isArray(parsed) ? parsed : [];
     } catch { /* anexo corrompido: ignora */ }
-    return { ...r, attachments };
+    let meta = {};
+    try { meta = JSON.parse(r.meta || '{}') || {}; } catch { /* ignora */ }
+    return { ...r, attachments, meta };
   });
 
   res.json({ messages: attachBadges(messages) });

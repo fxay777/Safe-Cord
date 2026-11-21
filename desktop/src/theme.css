@@ -149,3 +149,7 @@ input:focus-visible,
 
 /* ─── Mercado ─── */
 .sc-product-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 55%, transparent) !important; box-shadow: 0 10px 28px rgba(0,0,0,0.25); }
+
+.sc-ticket-option { transition: border-color .15s ease, background .15s ease, transform .1s ease; }
+.sc-ticket-option:hover:not(:disabled) { border-color: var(--opt) !important; background: color-mix(in srgb, var(--opt) 9%, var(--bg-surface)) !important; }
+.sc-ticket-option:active:not(:disabled) { transform: scale(0.98); }

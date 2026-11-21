@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
+const { canViewChannel, getTicket, ticketAudience } = require('./tickets');
 const { verifyToken } = require('./auth');
 const { effectiveStatus } = require('./statusUtils');
 
@@ -77,6 +78,9 @@ function attachRealtime(io) {
 
     // ---- Chat de texto ----
     socket.on('channel:join', (channelId) => {
+      // Só entra na sala quem pode ver o canal — senão dava pra "escutar" qualquer canal pelo id
+      const ch = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId);
+      if (!ch || !canViewChannel(ch, socket.user.id)) return;
       socket.join(`channel:${channelId}`);
     });
 
@@ -90,12 +94,15 @@ function attachRealtime(io) {
       if ((!trimmed && safeAttachments.length === 0) || !channelId) return;
 
       // Só membro do servidor pode mandar mensagem no canal (antes qualquer um com o id mandava)
-      const channel = db.prepare('SELECT server_id FROM channels WHERE id = ?').get(channelId);
-      if (!channel) return;
-      const isMember = db
-        .prepare('SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?')
-        .get(channel.server_id, socket.user.id);
-      if (!isMember) return;
+      const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId);
+      if (!channel || !canViewChannel(channel, socket.user.id)) return;
+      if (channel.ticket_id) {
+        const t = getTicket(channel.ticket_id);
+        if (!t || t.status !== 'open') {
+          socket.emit('message:rejected', { channelId, error: 'Esse ticket está fechado' });
+          return;
+        }
+      }
 
       const id = uuidv4();
       const created_at = Date.now();
@@ -109,15 +116,21 @@ function attachRealtime(io) {
 
       // Vai pra TODOS os membros do servidor (sala pessoal de cada um), não só pra quem está
       // com o canal aberto — é isso que faz o contador de não lidas acumular nos outros canais.
-      const memberRooms = db
-        .prepare('SELECT user_id FROM server_members WHERE server_id = ?')
-        .all(channel.server_id)
-        .map((m) => `user:${m.user_id}`);
-      io.to([`channel:${channelId}`, ...memberRooms]).emit('message:new', {
+      // Canal de ticket: só pra quem enxerga o ticket
+      const memberRooms = channel.ticket_id
+        ? ticketAudience(getTicket(channel.ticket_id)).map((u) => `user:${u}`)
+        : db
+          .prepare('SELECT user_id FROM server_members WHERE server_id = ?')
+          .all(channel.server_id)
+          .map((m) => `user:${m.user_id}`);
+      // Só pras salas pessoais de quem pode ver AGORA (a sala do canal pode ter alguém que perdeu acesso)
+      io.to(memberRooms).emit('message:new', {
         id,
         channelId,
         serverId: channel.server_id,
         content: trimmed,
+        kind: 'text',
+        meta: {},
         attachments: safeAttachments,
         created_at,
         author_id: socket.user.id,
@@ -133,6 +146,9 @@ function attachRealtime(io) {
     });
 
     socket.on('typing', ({ channelId }) => {
+      if (!socket.rooms.has(`channel:${channelId}`)) return;
+      const typingCh = db.prepare('SELECT * FROM channels WHERE id = ?').get(channelId);
+      if (!typingCh || !canViewChannel(typingCh, socket.user.id)) { socket.leave(`channel:${channelId}`); return; }
       socket.to(`channel:${channelId}`).emit('typing', {
         channelId,
         username: socket.user.username,

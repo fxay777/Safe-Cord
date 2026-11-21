@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { resolveAssetUrl } from '../api';
 import {
   CloseIcon, CheckIcon, HashIcon, SpeakerIcon, TrashIcon, EditIcon, PlusIcon, ImageIcon, SearchIcon,
-  UsersIcon, ShieldCheckIcon, GearIcon, CrownIcon, LinkIcon, UserPlusIcon, AlertIcon, ChevronDownIcon,
+  UsersIcon, ShieldCheckIcon, GearIcon, CrownIcon, LinkIcon, UserPlusIcon, AlertIcon, ChevronDownIcon, TicketIcon,
 } from './Icons';
+import TicketsSettings from './tickets/TicketsSettings';
 
 // ─── Configurações do servidor (estilo Discord) ─────────────────────────────
 // Visão geral · Canais · Cargos · Membros · Convites · Banimentos
@@ -21,6 +22,7 @@ const PERMISSION_HELP = {
   gerenciar_membros: 'Pode dar e tirar cargos dos membros.',
   banir_membros: 'Pode expulsar e banir membros. Use com cuidado.',
   gerenciar_servidor: 'Pode mudar nome, descrição, cor, ícone, banner e o convite.',
+  gerenciar_tickets: 'Pode criar painéis de ticket e ver, atender, fechar e excluir qualquer ticket.',
 };
 
 export default function ServerSettingsModal({
@@ -28,7 +30,7 @@ export default function ServerSettingsModal({
   onClose, onUpdateServer, onUploadServerImage, onRemoveServerImage, onRegenerateInvite,
   onCreateChannel, onUpdateChannel, onDeleteChannel, onCreateCategory, onRenameCategory, onDeleteCategory,
   onCreateRole, onUpdateRole, onDeleteRole, onAssignMemberRoles, onMemberRemoved,
-  onDeleteServer, onLeaveServer, initialSection = 'overview',
+  onDeleteServer, onLeaveServer, onGoToChannel, initialSection = 'overview',
 }) {
   const perms = permissions?.permissions || [];
   const isOwner = server.owner_id === user?.id || permissions?.isOwner;
@@ -42,6 +44,7 @@ export default function ServerSettingsModal({
     { id: 'members', label: 'Membros', Icon: UsersIcon, show: true },
     { id: 'invites', label: 'Convites', Icon: LinkIcon, show: true },
     { id: 'bans', label: 'Banimentos', Icon: AlertIcon, show: can('banir_membros') },
+    { id: 'tickets', label: 'Tickets', Icon: TicketIcon, show: can('gerenciar_tickets') },
   ].filter((s) => s.show);
 
   const [section, setSection] = useState(sections.some((s) => s.id === initialSection) ? initialSection : 'overview');
@@ -103,6 +106,7 @@ export default function ServerSettingsModal({
           )}
           {section === 'invites' && <Invites server={server} canRegenerate={can('gerenciar_servidor')} onRegenerateInvite={onRegenerateInvite} />}
           {section === 'bans' && <Bans api={api} server={server} />}
+          {section === 'tickets' && <TicketsSettings api={api} server={server} roles={roles} categories={categories} onGoToChannel={onGoToChannel} />}
         </main>
 
         {dangerOpen && (

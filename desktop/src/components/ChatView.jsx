@@ -5,10 +5,13 @@ import BadgeRow from './BadgeRow';
 import { SearchIcon, SmileyIcon, EditIcon, LeaveIcon, UserPlusIcon, ImageIcon, SendIcon, PlusIcon, CheckIcon, CloseIcon } from './Icons';
 import logo from '../assets/logo.png';
 import { EmptyChannelArt, EmptyMessagesArt } from './EmptyStateArt';
+import { TicketPanelCard, TicketEventRow, TicketBar, TicketClosedComposer } from './tickets/TicketChat';
+import { TicketIcon } from './Icons';
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB: cobre imagem e vídeo curto
 
 export default function ChatView({
+  ticketTools = null, // { api, serverId, me, members, panelsVersion, onOpenChannel, onGoToChannelId, onNotice }
   onOpenProfile,
   channel,
   messages = [],
@@ -178,7 +181,7 @@ export default function ChatView({
 
       {/* HEADER */}
       <header style={styles.header}>
-        <div style={styles.channelIcon}>{isDM ? '@' : '#'}</div>
+        <div style={styles.channelIcon}>{isDM ? '@' : channel.ticket ? <TicketIcon size={17} /> : '#'}</div>
 
         <div style={styles.headerInfo}>
           <div style={styles.channelName}>{channel.name}</div>
@@ -257,6 +260,8 @@ export default function ChatView({
         </div>
       </header>
 
+      {channel.ticket && ticketTools && <TicketBar key={channel.id} tools={ticketTools} channel={channel} />}
+
       {/* MESSAGES */}
       <main style={styles.messages}>
         {searchQuery.trim() && (
@@ -267,7 +272,7 @@ export default function ChatView({
           </div>
         )}
 
-        {!isDM && !searchQuery.trim() && <ChannelWelcome channelName={channel.name} />}
+        {!isDM && !channel.ticket && !searchQuery.trim() && <ChannelWelcome channelName={channel.name} />}
 
         {messages.length === 0 && !isDM ? null : messages.length === 0 ? (
           <div style={styles.welcome}>
@@ -292,8 +297,11 @@ export default function ChatView({
               .slice(0, 2)
               .toUpperCase();
 
+            const special = m.kind === 'ticket_panel' || m.kind === 'ticket_event';
             const grouped =
               prev &&
+              !special &&
+              (prev.kind || 'text') === 'text' &&
               prev.author_id === m.author_id &&
               new Date(m.created_at) -
                 new Date(prev.created_at) <
@@ -313,6 +321,9 @@ export default function ChatView({
                   <DateDivider date={m.created_at} />
                 )}
 
+                {m.kind === 'ticket_event' ? (
+                  <TicketEventRow m={m} />
+                ) : (
                 <div
                   style={styles.msgRow(grouped)}
                   className="chat-message"
@@ -352,6 +363,10 @@ export default function ChatView({
                       </div>
                     )}
 
+                    {m.kind === 'ticket_panel' && (ticketTools
+                      ? <TicketPanelCard tools={ticketTools} panelId={m.meta?.panelId} />
+                      : <div style={styles.content}>Painel de tickets</div>)}
+
                     {m.attachments?.length > 0 && (
                       <div style={styles.attachmentGrid}>
                         {m.attachments.map((att, idx) => (
@@ -377,6 +392,7 @@ export default function ChatView({
                     )}
                   </div>
                 </div>
+                )}
               </React.Fragment>
             );
           })
@@ -428,6 +444,7 @@ export default function ChatView({
       )}
 
       {/* INPUT */}
+      {channel.ticket?.status === 'closed' ? <TicketClosedComposer ticket={channel.ticket} /> : (
       <div style={styles.inputContainer}>
         <input
           ref={fileInputRef}
@@ -504,6 +521,7 @@ export default function ChatView({
           <SendIcon size={18} />
         </button>
       </div>
+      )}
     </div>
   );
 }

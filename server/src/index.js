@@ -20,6 +20,7 @@ const marketRoutes = require('./routes/marketRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const userRoutes = require('./routes/userRoutes');
 const verificationRoutes = require('./routes/verificationRoutes');
+const ticketRoutes = require('./routes/ticketRoutes');
 const { attachRealtime } = require('./realtime');
 const { isSmtpConfigured } = require('./mailer');
 
@@ -45,6 +46,7 @@ app.use(
 
 app.get('/health', (req, res) => res.json({ ok: true, name: 'SafeCord API' }));
 app.use('/api/auth', authRoutes);
+app.use('/api/servers/:serverId/tickets', ticketRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/friends', friendRoutes);

@@ -36,6 +36,7 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
   const [serverSettingsSection, setServerSettingsSection] = useState(null); // null = fechado
+  const [panelsVersion, setPanelsVersion] = useState(0); // muda quando um painel de tickets é editado
   const [profileTarget, setProfileTarget] = useState(null); // cartão de perfil de alguém aberto
   const closeProfileViewer = useCallback(() => setProfileTarget(null), []);
   const [notice, setNotice] = useState(null); // aviso rápido no rodapé (ex.: você foi expulso)
@@ -399,6 +400,35 @@ export default function App() {
       if (!u) return;
       setMembers((prev) => prev.map((m) => (m.id === u.id ? { ...m, ...u, roles: m.roles } : m)));
     };
+    // Tickets: canal privado apareceu/mudou pra mim, ou perdi o acesso
+    const upsertChannel = (serverId, channel) => {
+      setServers((prev) => prev.map((s) => {
+        if (s.id !== serverId) return s;
+        const exists = s.channels.some((c) => c.id === channel.id);
+        return { ...s, channels: exists ? s.channels.map((c) => (c.id === channel.id ? { ...c, ...channel } : c)) : [...s.channels, channel] };
+      }));
+      setActiveChannel((prev) => (prev?.id === channel.id ? { ...prev, ...channel } : prev));
+    };
+    const onChannelUpsert = ({ serverId, channel }) => {
+      upsertChannel(serverId, channel);
+      if (serverId === activeServerId) loadServerExtras(); // pode ter nascido a categoria "Tickets"
+    };
+    const onChannelRemoved = ({ serverId, channelId }) => {
+      setServers((prev) => prev.map((s) => (s.id === serverId ? { ...s, channels: s.channels.filter((c) => c.id !== channelId) } : s)));
+      setActiveChannel((prev) => {
+        if (prev?.id !== channelId) return prev;
+        setNotice('Você não tem mais acesso a esse canal');
+        setMessages([]);
+        return null; // o efeito de "primeiro canal" abre outro sozinho
+      });
+    };
+    const onMessageRemoved = ({ messageId }) => setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    const onPanelUpdated = () => setPanelsVersion((v) => v + 1);
+    const onMessageRejected = ({ error }) => setNotice(error || 'Mensagem não enviada');
+    const onTicketOpened = ({ serverId, ticket }) => {
+      const srv = servers.find((x) => x.id === serverId);
+      setNotice(`Novo ticket #${String(ticket.number).padStart(4, '0')} · ${ticket.option_label}${srv ? ` em ${srv.name}` : ''}`);
+    };
     const onVoicePresence = ({ channelId, participants }) => {
       setVoicePresence((prev) => ({ ...prev, [channelId]: participants }));
     };
@@ -410,7 +440,19 @@ export default function App() {
     socket.on('server:removed', onServerRemoved);
     socket.on('server:member-removed', onMemberRemoved);
     socket.on('user:updated', onUserUpdated);
+    socket.on('channel:upsert', onChannelUpsert);
+    socket.on('channel:removed', onChannelRemoved);
+    socket.on('message:removed', onMessageRemoved);
+    socket.on('ticket:panel-updated', onPanelUpdated);
+    socket.on('message:rejected', onMessageRejected);
+    socket.on('ticket:opened', onTicketOpened);
     return () => {
+      socket.off('channel:upsert', onChannelUpsert);
+      socket.off('channel:removed', onChannelRemoved);
+      socket.off('message:removed', onMessageRemoved);
+      socket.off('ticket:panel-updated', onPanelUpdated);
+      socket.off('message:rejected', onMessageRejected);
+      socket.off('ticket:opened', onTicketOpened);
       socket.off('channel:updated', onChannelUpdated);
       socket.off('server:removed', onServerRemoved);
       socket.off('server:member-removed', onMemberRemoved);
@@ -420,7 +462,7 @@ export default function App() {
       socket.off('presence:update', onPresence);
       socket.off('voice:presence', onVoicePresence);
     };
-  }, [socket, activeChannel, view, activeServerId]);
+  }, [socket, activeChannel, view, activeServerId, servers, loadServerExtras]);
 
   // O aviso do rodapé some sozinho
   useEffect(() => {
@@ -731,6 +773,22 @@ export default function App() {
               canEditTopic={Boolean(myPermissions?.isOwner || myPermissions?.permissions?.includes('gerenciar_canais'))}
               onUpdateTopic={(topic) => activeChannel && handleUpdateChannelTopic(activeChannel.id, topic)}
               onOpenProfile={openServerProfile}
+              ticketTools={{
+                api,
+                serverId: activeServerId,
+                me: user,
+                members,
+                panelsVersion,
+                onNotice: setNotice,
+                onOpenChannel: (ch) => {
+                  setServers((prev) => prev.map((s) => (s.id === activeServerId && !s.channels.some((c) => c.id === ch.id) ? { ...s, channels: [...s.channels, ch] } : s)));
+                  selectChannel(ch);
+                },
+                onGoToChannelId: (id) => {
+                  const ch = activeServer?.channels?.find((c) => c.id === id);
+                  if (ch) selectChannel(ch);
+                },
+              }}
             />
           </div>
 
@@ -766,6 +824,12 @@ export default function App() {
           onMemberRemoved={(userId) => setMembers((prev) => prev.filter((m) => m.id !== userId))}
           onDeleteServer={deleteServer}
           onLeaveServer={leaveServer}
+          onGoToChannel={(channelId) => {
+            const ch = activeServer?.channels?.find((c) => c.id === channelId);
+            if (!ch) { setNotice('Você não vê esse canal'); return; }
+            setServerSettingsSection(null);
+            selectChannel(ch);
+          }}
         />
       )}
 

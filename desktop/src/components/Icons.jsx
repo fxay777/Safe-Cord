@@ -703,3 +703,38 @@ export function ClockIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+export function TicketIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V14a2 2 0 0 0 0-4V7.5Z" {...stroke} />
+      <path d="M14.5 6.5v1.5M14.5 11.25v1.5M14.5 16v1.5" {...stroke} />
+    </svg>
+  );
+}
+
+export function HelpIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <circle cx="12" cy="12" r="8.5" {...stroke} />
+      <path d="M9.6 9.6a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2-2.4 3.5M12 16.8v.2" {...stroke} />
+    </svg>
+  );
+}
+
+export function ChatIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0a2.5 2.5 0 0 1-2-2.5v-6Z" {...stroke} />
+    </svg>
+  );
+}
+
+export function BugIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <rect x="7.5" y="8" width="9" height="11" rx="4.5" {...stroke} />
+      <path d="M9.5 8a2.5 2.5 0 0 1 5 0M12 11v8M7.5 12.5H4.5M19.5 12.5h-3M7.8 16.5l-2.6 1.5M16.2 16.5l2.6 1.5M7.8 9.5 5.5 8M16.2 9.5 18.5 8" {...stroke} />
+    </svg>
+  );
+}

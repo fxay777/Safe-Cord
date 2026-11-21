@@ -11,6 +11,7 @@ const PERMISSIONS = [
   { key: 'gerenciar_membros', label: 'Gerenciar membros (atribuir cargo)' },
   { key: 'banir_membros', label: 'Banir/expulsar membros' },
   { key: 'gerenciar_servidor', label: 'Gerenciar servidor (ícone, banner, nome)' },
+  { key: 'gerenciar_tickets', label: 'Gerenciar tickets (criar painéis, atender e fechar qualquer ticket)' },
 ];
 const PERMISSION_KEYS = new Set(PERMISSIONS.map((p) => p.key));
 

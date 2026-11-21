@@ -380,6 +380,73 @@ for (const table of ['purchases', 'orders']) {
 }
 ensureConversationColumns();
 
+// ─── Tickets (atendimento sem bot) ──────────────────────────────────────────
+// Um "painel" é uma mensagem com botões que a staff posta num canal. Cada botão (opção)
+// abre um canal privado só com quem abriu, as pessoas adicionadas e a staff.
+db.exec(`
+CREATE TABLE IF NOT EXISTS ticket_panels (
+  id TEXT PRIMARY KEY,
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  channel_id TEXT REFERENCES channels(id) ON DELETE SET NULL,  -- onde o painel foi postado
+  message_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '#1E7BFF',
+  staff_role_ids TEXT NOT NULL DEFAULT '[]',                 -- cargos que atendem esse painel
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL, -- onde os canais de ticket nascem
+  max_open_per_user INTEGER NOT NULL DEFAULT 1,
+  welcome_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT REFERENCES users(id),
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ticket_options (
+  id TEXT PRIMARY KEY,
+  panel_id TEXT NOT NULL REFERENCES ticket_panels(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '#1E7BFF',
+  icon TEXT NOT NULL DEFAULT 'ticket',
+  questions TEXT NOT NULL DEFAULT '[]',                      -- [{label, required, long}]
+  position INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS tickets (
+  id TEXT PRIMARY KEY,
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  panel_id TEXT REFERENCES ticket_panels(id) ON DELETE SET NULL,
+  option_id TEXT REFERENCES ticket_options(id) ON DELETE SET NULL,
+  option_label TEXT NOT NULL DEFAULT '',
+  number INTEGER NOT NULL,
+  channel_id TEXT REFERENCES channels(id) ON DELETE SET NULL,
+  opener_id TEXT NOT NULL REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'open',                       -- 'open' | 'closed'
+  claimed_by TEXT REFERENCES users(id),
+  answers TEXT NOT NULL DEFAULT '[]',                        -- [{question, answer}]
+  created_at INTEGER NOT NULL,
+  closed_at INTEGER,
+  closed_by TEXT REFERENCES users(id),
+  close_reason TEXT,
+  UNIQUE (server_id, number)
+);
+CREATE INDEX IF NOT EXISTS idx_tickets_server ON tickets(server_id, status);
+CREATE INDEX IF NOT EXISTS idx_tickets_opener ON tickets(opener_id);
+CREATE TABLE IF NOT EXISTS ticket_members (
+  ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  added_by TEXT REFERENCES users(id),
+  PRIMARY KEY (ticket_id, user_id)
+);
+`);
+{
+  const ch = new Set(db.prepare('PRAGMA table_info(channels)').all().map((c) => c.name));
+  if (!ch.has('ticket_id')) db.exec('ALTER TABLE channels ADD COLUMN ticket_id TEXT');
+  const ms = new Set(db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name));
+  // kind: 'text' (normal) | 'ticket_panel' (cartão com botões) | 'ticket_event' (aviso de sistema)
+  if (!ms.has('kind')) db.exec("ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
+  if (!ms.has('meta')) db.exec("ALTER TABLE messages ADD COLUMN meta TEXT NOT NULL DEFAULT '{}'");
+  const sv = new Set(db.prepare('PRAGMA table_info(servers)').all().map((c) => c.name));
+  if (!sv.has('ticket_counter')) db.exec('ALTER TABLE servers ADD COLUMN ticket_counter INTEGER NOT NULL DEFAULT 0');
+}
+
 // ─── Verificação de vendedores (KYC) ────────────────────────────────────────
 // Tudo que identifica a pessoa (CPF, endereço, banco) fica em data_enc, criptografado.
 // Documento, selfie e fotos da prova de vida ficam em private-files/kyc, também criptografados.

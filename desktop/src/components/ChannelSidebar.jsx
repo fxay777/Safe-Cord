@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import UserBar from './UserBar';
 import VoiceBar from './VoiceBar';
-import { TrashIcon, SpeakerIcon, GearIcon, CheckIcon, HashIcon, ChevronDownIcon, UserPlusIcon, ImageIcon, PlusIcon, UsersIcon } from './Icons';
+import { TrashIcon, SpeakerIcon, GearIcon, CheckIcon, HashIcon, ChevronDownIcon, UserPlusIcon, ImageIcon, PlusIcon, UsersIcon, TicketIcon, LockIcon } from './Icons';
 import SafeCordMark from './SafeCordMark';
 import { resolveAssetUrl } from '../api';
 
@@ -167,9 +167,15 @@ export default function ChannelSidebar({
     return (
       <React.Fragment key={c.id}>
         <div style={styles.channelRow(isActive)} className={isActive ? "sc-channel-row sc-active" : "sc-channel-row"}>
-          <button onClick={() => onSelectChannel(c)} style={styles.channelBtn(isActive, unread > 0)}>
-            <span style={styles.hash}>{isVoice ? <SpeakerIcon size={15} /> : <HashIcon size={15} />}</span>
+          <button
+            onClick={() => onSelectChannel(c)}
+            style={{ ...styles.channelBtn(isActive, unread > 0), ...(c.ticket?.status === 'closed' && !isActive ? { opacity: 0.55 } : {}) }}
+            title={c.ticket ? `Ticket #${String(c.ticket.number).padStart(4, '0')} · ${c.ticket.option_label}${c.ticket.status === 'closed' ? ' (fechado)' : ''}` : undefined}
+            data-channel-id={c.id}
+          >
+            <span style={styles.hash}>{isVoice ? <SpeakerIcon size={15} /> : c.ticket ? <TicketIcon size={15} /> : <HashIcon size={15} />}</span>
             <span style={styles.channelName}>{c.name}</span>
+            {c.ticket?.status === 'closed' && <LockIcon size={12} style={{ flexShrink: 0, opacity: 0.8 }} />}
             {unread > 0 && !isActive && (
               <span style={styles.channelUnreadBadge}>{unread > 99 ? '99+' : unread}</span>
             )}
@@ -246,6 +252,8 @@ export default function ChannelSidebar({
         {sortedCategories.map((category) => {
           const collapsed = collapsedCategories.has(category.id);
           const channels = channelsByCategory.get(category.id) || [];
+          // Categoria vazia só aparece pra quem cria canais (ex.: "Tickets" sem nenhum ticket seu)
+          if (channels.length === 0 && !canManageChannels) return null;
           return (
             <div key={category.id} style={styles.categoryBlock}>
               <button type="button" style={styles.categoryHeader} onClick={() => toggleCategoryCollapsed(category.id)}>

@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
+const { visibleChannels } = require('../tickets');
 const { requireAuth } = require('../auth');
 const { getEffectivePermissions, requireServerPermission } = require('../permissions');
 const { effectiveStatus } = require('../statusUtils');
@@ -25,9 +26,7 @@ router.get('/', (req, res) => {
 
   const result = servers.map((s) => ({
     ...s,
-    channels: db
-      .prepare('SELECT * FROM channels WHERE server_id = ? ORDER BY position ASC')
-      .all(s.id),
+    channels: visibleChannels(s.id, req.user.id),
   }));
 
   res.json({ servers: result });
@@ -86,7 +85,7 @@ router.post('/join', (req, res) => {
     ).run(server.id, req.user.id, Date.now());
   }
 
-  const channels = db.prepare('SELECT * FROM channels WHERE server_id = ?').all(server.id);
+  const channels = visibleChannels(server.id, req.user.id);
   res.json({ server: { ...server, channels } });
 });
 
