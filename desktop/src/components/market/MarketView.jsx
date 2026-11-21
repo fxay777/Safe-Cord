@@ -37,11 +37,13 @@ export default function MarketView({ api, socket, user }) {
     socket.on('market:order-updated', bump);
     socket.on('market:payout', bump);
     socket.on('market:verification', bump);
+    socket.on('market:mp-connected', bump);
     return () => {
       socket.off('market:new-order', bump);
       socket.off('market:order-updated', bump);
       socket.off('market:payout', bump);
       socket.off('market:verification', bump);
+      socket.off('market:mp-connected', bump);
     };
   }, [socket]);
 

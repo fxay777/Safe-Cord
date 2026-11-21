@@ -124,6 +124,11 @@ function PayoutsAdmin({ api, refreshKey }) {
               <div style={st.meta}>
                 {s.owner ? `${s.owner.display_name || s.owner.username}#${s.owner.tag}` : '—'} · {s.summary.orders} venda(s)
               </div>
+              {s.mercadopago?.connected && (
+                <div style={{ ...st.pix, color: '#00B1EA', display: 'flex', alignItems: 'center', gap: 5, cursor: 'default' }}>
+                  <WalletIcon size={12} /> Recebe direto no Mercado Pago{s.mercadopago.nickname ? ` (${s.mercadopago.nickname})` : ''}
+                </div>
+              )}
               {s.can_receive && payoutText(s) ? (
                 <button type="button" style={st.pix} onClick={() => copy(s.payout?.pix?.key || s.payout_info, s.id)} title="Copiar chave Pix">
                   {s.payout?.pix ? '' : 'Pix: '}{payoutText(s)}

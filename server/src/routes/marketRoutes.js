@@ -7,6 +7,7 @@ const { getPublicUser } = require('../userUtils');
 const { isAdmin, requireAdmin } = require('../adminUtils');
 const kyc = require('../sellerVerification');
 const br = require('../brValidators');
+const mpConnect = require('../mpConnect');
 const {
   upload, uploadDigital, saveProductImage, saveStoreImage, digitalFilePath, removeIfLocalUpload, MAX_DIGITAL_BYTES,
 } = require('../uploads');
@@ -286,8 +287,17 @@ function sellerSummary(storeId) {
     else if (isReleased(o, now)) available += o.seller_cents;
     else pending += o.seller_cents;
   }
+  let direct = 0;
+  for (const o of rows) {
+    if (!o.split) continue;
+    // pagamento direto: já caiu na conta do vendedor — não entra em "a repassar"
+    direct += o.seller_cents;
+    if (o.payout_id) paidOut -= o.seller_cents;
+    else if (isReleased(o, now)) available -= o.seller_cents;
+    else pending -= o.seller_cents;
+  }
   const toShip = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE store_id = ? AND status = 'paid'").get(storeId).n;
-  return { available_cents: available, pending_cents: pending, paid_out_cents: paidOut, gross_cents: gross, orders: rows.length, to_ship: toShip };
+  return { available_cents: available, pending_cents: pending, paid_out_cents: paidOut, direct_cents: direct, gross_cents: gross, orders: rows.length, to_ship: toShip };
 }
 
 router.get('/my-store', (req, res) => {
@@ -299,7 +309,22 @@ router.get('/my-store', (req, res) => {
     products: products.map((p) => publicProduct(p, { forOwner: true })),
     summary: sellerSummary(row.id),
     verification: kyc.ownerView(req.user.id),
+    mercadopago: mpConnect.statusFor(req.user.id),
   });
+});
+
+// ─── pagamento direto (conta Mercado Pago do vendedor) ──────────────────────
+router.get('/mp/status', (req, res) => res.json(mpConnect.statusFor(req.user.id)));
+
+router.post('/mp/connect', (req, res) => {
+  if (!mpConnect.enabled()) return res.status(503).json({ error: 'Pagamento direto ainda não está ligado no servidor (falta MERCADOPAGO_CLIENT_ID/SECRET)' });
+  if (!kyc.isApproved(req.user.id)) return res.status(403).json({ error: 'Termine a verificação da loja antes de conectar o Mercado Pago' });
+  res.json({ url: mpConnect.startConnect(req.user.id) });
+});
+
+router.post('/mp/disconnect', (req, res) => {
+  mpConnect.disconnect(req.user.id);
+  res.json(mpConnect.statusFor(req.user.id));
 });
 
 function readStoreBody(body, current = {}) {
@@ -538,12 +563,16 @@ router.post('/checkout', async (req, res) => {
       ...(images[0] && APP_URL.startsWith('https://') ? { imageUrl: `${APP_URL}${images[0]}` } : {}),
     }];
     if (shipping > 0) items.push({ title: 'Frete', unitCents: shipping, quantity: 1 });
+    // Vendedor com Mercado Pago conectado: cobra na conta dele, taxa do SafeCord separada na hora
+    const sellerToken = await mpConnect.sellerToken(store.owner_id);
     const checkout = await payments.createCheckout({
       reference: orderId,
       items,
       metadata: { kind: 'market', orderId, userId: req.user.id },
+      split: sellerToken ? { sellerToken, feeCents: fee, notifyTag: store.id } : null,
     });
     insert(checkout.providerRef, checkout.provider);
+    if (sellerToken) db.prepare('UPDATE orders SET split = 1 WHERE id = ?').run(orderId);
     res.json({ orderId, checkoutUrl: checkout.url });
   } catch (err) {
     res.status(502).json({ error: `Não foi possível criar a cobrança: ${err.message}` });
@@ -565,10 +594,12 @@ router.post('/orders/:id/confirm', async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
   if (order.status === 'pending' && paymentsOn() && order.payment_provider !== 'dev') {
     try {
+      const owner = order.split ? db.prepare('SELECT owner_id FROM stores WHERE id = ?').get(order.store_id) : null;
       const status = await payments.checkStatus({
         reference: order.id,
         providerRef: order.stripe_session_id,
         provider: order.payment_provider || undefined,
+        token: owner ? await mpConnect.sellerToken(owner.owner_id) : null,
       });
       if (status === 'paid') fulfillOrder(order.id, req);
     } catch (err) {
@@ -636,6 +667,7 @@ router.get('/admin/overview', requireAdmin, (req, res) => {
     payout: kyc.payoutDestination(s.owner_id),
     verification_status: kyc.getRow(s.owner_id)?.status || (s.requires_verification ? 'draft' : 'legacy'),
     can_receive: canReceivePayout(s),
+    mercadopago: mpConnect.statusFor(s.owner_id),
   }));
   const totals = db.prepare(
     "SELECT COALESCE(SUM(total_cents),0) AS gross, COALESCE(SUM(fee_cents),0) AS fees, COUNT(*) AS n FROM orders WHERE status IN ('paid','shipped','delivered')"
@@ -659,7 +691,7 @@ router.post('/admin/payouts', requireAdmin, (req, res) => {
   const now = Date.now();
   const payout = db.transaction(() => {
     const rows = db.prepare(
-      "SELECT * FROM orders WHERE store_id = ? AND payout_id IS NULL AND status IN ('paid','shipped','delivered')"
+      "SELECT * FROM orders WHERE store_id = ? AND payout_id IS NULL AND split = 0 AND status IN ('paid','shipped','delivered')"
     ).all(store.id).filter((o) => isReleased(o, now));
     if (!rows.length) return null;
     const id = uuidv4();

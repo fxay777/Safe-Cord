@@ -22,6 +22,12 @@ export default function SellerDashboard({ api, user, config, refreshKey, onOpenP
       .catch((err) => setError(errorText(err, 'Não foi possível carregar sua loja')));
   }, [api]);
   useEffect(() => { load(); }, [load, refreshKey]);
+  // Voltou da aba do Mercado Pago: atualiza (a conexão pode ter acabado de acontecer)
+  useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [load]);
 
   if (!data) return error ? <div style={ui.error}>{error}</div> : <div style={s.hint}>Carregando…</div>;
   const needsVerification = data.store?.requires_verification && data.verification?.status !== 'approved';
@@ -62,15 +68,30 @@ export default function SellerDashboard({ api, user, config, refreshKey, onOpenP
         </button>
       </div>
 
+      {!needsVerification && data.mercadopago?.available && !data.mercadopago?.connected && (
+        <ConnectMercadoPago api={api} status={data.mercadopago} onChanged={load} variant="banner" />
+      )}
+
       <div style={s.tiles}>
-        <Tile icon={<WalletIcon size={17} />} label="Disponível pra repasse" value={brl(summary.available_cents)} accent />
-        <Tile icon={<TruckIcon size={17} />} label="A liberar (em entrega)" value={brl(summary.pending_cents)} />
+        {data.mercadopago?.connected ? (
+          <>
+            <Tile icon={<WalletIcon size={17} />} label="Recebido direto no Mercado Pago" value={brl(summary.direct_cents || 0)} accent />
+            <Tile icon={<TruckIcon size={17} />} label="Saldo antigo a repassar" value={brl(summary.available_cents + summary.pending_cents)} />
+          </>
+        ) : (
+          <>
+            <Tile icon={<WalletIcon size={17} />} label="Disponível pra repasse" value={brl(summary.available_cents)} accent />
+            <Tile icon={<TruckIcon size={17} />} label="A liberar (em entrega)" value={brl(summary.pending_cents)} />
+          </>
+        )}
         <Tile icon={<CheckIcon size={17} />} label="Já repassado" value={brl(summary.paid_out_cents)} />
         <Tile icon={<PackageIcon size={17} />} label="Pedidos pra enviar" value={summary.to_ship} highlight={summary.to_ship > 0} />
       </div>
       <div style={s.feeNote}>
-        O SafeCord fica com {config?.feePercent ?? 10}% do valor dos produtos (o frete é todo seu). Produto digital libera na hora;
-        físico libera quando o comprador confirma o recebimento (ou 14 dias depois do envio). O repasse vai pra conta/Pix verificados.
+        O SafeCord fica com {config?.feePercent ?? 10}% do valor dos produtos (o frete é todo seu).{' '}
+        {data.mercadopago?.connected
+          ? 'Cada venda cai direto na sua conta do Mercado Pago, já sem a taxa — o prazo pra sacar é o do Mercado Pago.'
+          : 'Produto digital libera na hora; físico libera quando o comprador confirma o recebimento (ou 14 dias depois do envio). O repasse vai pra conta/Pix verificados.'}
       </div>
 
       <div style={s.sectionTabs}>
@@ -115,7 +136,7 @@ export default function SellerDashboard({ api, user, config, refreshKey, onOpenP
       )}
 
       {section === 'pedidos' && <StoreOrders api={api} refreshKey={refreshKey} onChanged={load} />}
-      {section === 'config' && <StoreSettings api={api} store={store} verification={data.verification} config={config} onSaved={load} onOpenVerification={() => setWizard(true)} />}
+      {section === 'config' && <StoreSettings api={api} store={store} verification={data.verification} mercadopago={data.mercadopago} config={config} onSaved={load} onOpenVerification={() => setWizard(true)} />}
 
       {editing && (
         <ProductEditor
@@ -466,11 +487,99 @@ function StoreOrders({ api, refreshKey, onChanged }) {
   );
 }
 
+// ─── Pagamento direto (conta Mercado Pago do vendedor) ──────────────────────
+function MpLogo({ size = 38 }) {
+  return (
+    <span style={{ width: size, height: size, borderRadius: size / 3, background: '#00B1EA', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <WalletIcon size={size * 0.48} />
+    </span>
+  );
+}
+
+function ConnectMercadoPago({ api, status, onChanged, variant }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [waiting, setWaiting] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
+
+  // Enquanto a aba do Mercado Pago está aberta, confere de tempos em tempos
+  useEffect(() => {
+    if (!waiting || status?.connected) { if (status?.connected) setWaiting(false); return undefined; }
+    const t = setInterval(onChanged, 4000);
+    const stop = setTimeout(() => setWaiting(false), 5 * 60 * 1000);
+    return () => { clearInterval(t); clearTimeout(stop); };
+  }, [waiting, status?.connected, onChanged]);
+
+  async function connect() {
+    setBusy(true); setError('');
+    try {
+      const { data } = await api.post('/market/mp/connect');
+      window.open(data.url, '_blank', 'noopener');
+      setWaiting(true);
+    } catch (err) {
+      setError(errorText(err, 'Não foi possível abrir o Mercado Pago'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true);
+    try { await api.post('/market/mp/disconnect'); setConfirmOff(false); onChanged(); } catch (err) { setError(errorText(err)); } finally { setBusy(false); }
+  }
+
+  if (status?.connected) {
+    return (
+      <div style={s.mpConnected} data-mp-status="connected">
+        <MpLogo size={34} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-hi)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            Recebendo direto no Mercado Pago <CheckIcon size={13} style={{ color: 'var(--success)' }} />
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-low)', marginTop: 2 }}>
+            Conta {status.nickname || status.mp_user_id}{status.test_account ? ' · conta de teste' : ''}
+          </div>
+        </div>
+        {confirmOff ? (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" style={ui.btnGhost} onClick={() => setConfirmOff(false)}>Manter</button>
+            <button type="button" style={ui.btnDanger} disabled={busy} onClick={disconnect}>Desconectar</button>
+          </div>
+        ) : (
+          <button type="button" style={s.linkBtn} onClick={() => setConfirmOff(true)}>Desconectar</button>
+        )}
+      </div>
+    );
+  }
+
+  const banner = variant === 'banner';
+  return (
+    <div style={banner ? s.mpBanner : s.mpCard} data-mp-status="disconnected">
+      <MpLogo size={banner ? 42 : 36} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: banner ? 14.5 : 13.5, fontWeight: 750, color: 'var(--text-hi)' }}>
+          {status?.expired ? 'Sua conexão com o Mercado Pago expirou' : 'Receba cada venda na hora, direto no Mercado Pago'}
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-mid)', marginTop: 3, lineHeight: 1.45 }}>
+          {status?.expired
+            ? 'Conecte de novo pra voltar a receber direto. Até lá, suas vendas entram no repasse por Pix.'
+            : 'Sem esperar repasse: o dinheiro cai na sua conta e a taxa do SafeCord sai automaticamente. A conta precisa estar no mesmo CPF/CNPJ da verificação.'}
+        </div>
+        {waiting && <div style={{ fontSize: 12, color: 'var(--accent)', marginTop: 6, fontWeight: 600 }}>Esperando você autorizar na página do Mercado Pago…</div>}
+        {error && <div style={{ ...ui.error, marginTop: 8 }}>{error}</div>}
+      </div>
+      <button type="button" style={{ ...ui.btnPrimary, background: '#00B1EA', whiteSpace: 'nowrap' }} disabled={busy} onClick={connect}>
+        {busy ? 'Abrindo…' : status?.expired ? 'Conectar de novo' : 'Conectar Mercado Pago'}
+      </button>
+    </div>
+  );
+}
+
 // ─── Configurações da loja ──────────────────────────────────────────────────
 const CATEGORIES = ['Moda e acessórios', 'Arte e design', 'Games', 'Cursos e e-books', 'Música', 'Tecnologia', 'Artesanato', 'Beleza', 'Comida', 'Serviços digitais', 'Outros'];
 const PIX_LABEL = { cpf: 'CPF', cnpj: 'CNPJ', email: 'Email', phone: 'Celular', random: 'Chave aleatória' };
 
-function StoreSettings({ api, store, verification, onSaved, onOpenVerification }) {
+function StoreSettings({ api, store, verification, mercadopago, onSaved, onOpenVerification }) {
   const [name, setName] = useState(store.name);
   const [description, setDescription] = useState(store.description);
   const [category, setCategory] = useState(store.category || '');
@@ -595,9 +704,9 @@ function StoreSettings({ api, store, verification, onSaved, onOpenVerification }
         {['draft', 'rejected'].includes(verification?.status) && (
           <button type="button" style={ui.btnPrimary} onClick={onOpenVerification}><ShieldCheckIcon size={15} /> {legacy ? 'Verificar minha loja' : 'Continuar verificação'}</button>
         )}
-        <div style={s.futureMini}>
-          <strong style={{ color: 'var(--text-hi)' }}>Em breve:</strong> conectar sua conta do Mercado Pago e receber cada venda direto, na hora.
-        </div>
+        {mercadopago?.available && verification?.status === 'approved' && (
+          <ConnectMercadoPago api={api} status={mercadopago} onChanged={onSaved} variant="card" />
+        )}
       </div>
     </div>
   );
@@ -615,6 +724,10 @@ const s = {
   payIcon: { width: 38, height: 38, borderRadius: 12, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   payBox: { background: 'var(--bg-elevated)', borderRadius: 14, padding: '6px 12px' },
   payRow: { display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, color: 'var(--text-low)', padding: '6px 0', borderBottom: '1px solid var(--border)' },
+  mpBanner: { display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 18, marginBottom: 14, border: '1px solid color-mix(in srgb, #00B1EA 40%, var(--border))', background: 'color-mix(in srgb, #00B1EA 8%, var(--bg-surface))' },
+  mpCard: { display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, flexWrap: 'wrap', border: '1px solid color-mix(in srgb, #00B1EA 35%, var(--border))', background: 'color-mix(in srgb, #00B1EA 6%, var(--bg-surface))' },
+  mpConnected: { display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, border: '1px solid color-mix(in srgb, var(--success) 40%, var(--border))', background: 'color-mix(in srgb, var(--success) 7%, var(--bg-surface))' },
+  linkBtn: { border: 'none', background: 'none', color: 'var(--text-low)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' },
   futureMini: { fontSize: 12, color: 'var(--text-low)', lineHeight: 1.5, border: '1px dashed var(--border)', borderRadius: 12, padding: '9px 11px' },
   storeMeta: { fontSize: 12.5, opacity: 0.85, marginTop: 2 },
   tiles: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 },

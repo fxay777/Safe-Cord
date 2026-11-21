@@ -36,3 +36,11 @@ node tests/verification.test.js
 rm -f safecord.db* && node src/index.js &
 NODE_PATH=../desktop/node_modules node tests/tickets.test.js
 ```
+
+**Pagamento direto (split) — com o Mercado Pago falso:**
+```bash
+node tests/fake-mercadopago.js &
+rm -f safecord.db* && ADMIN_EMAILS=admin@t.com MERCADOPAGO_ACCESS_TOKEN=TEST-123 MERCADOPAGO_API_URL=http://localhost:4999 \
+  MERCADOPAGO_CLIENT_ID=CID-1 MERCADOPAGO_CLIENT_SECRET=CSECRET-1 MERCADOPAGO_AUTH_URL=http://localhost:4999/auth node src/index.js &
+node tests/mpsplit.test.js
+```

@@ -380,6 +380,33 @@ for (const table of ['purchases', 'orders']) {
 }
 ensureConversationColumns();
 
+// ─── Mercado Pago dos vendedores (pagamento direto / split) ─────────────────
+// O vendedor conecta a conta dele (OAuth). Cada venda é cobrada no nome dele e o
+// Mercado Pago separa a taxa do SafeCord (marketplace_fee) automaticamente.
+db.exec(`
+CREATE TABLE IF NOT EXISTS seller_mp_accounts (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  mp_user_id TEXT NOT NULL,
+  nickname TEXT,
+  tokens_enc TEXT NOT NULL,          -- {access_token, refresh_token, public_key} criptografado
+  expires_at INTEGER NOT NULL,
+  live_mode INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active', -- 'active' | 'expired' (refresh falhou: volta pro repasse manual)
+  connected_at INTEGER NOT NULL,
+  refreshed_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS mp_oauth_states (
+  state TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_verifier TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+`);
+{
+  const oc = new Set(db.prepare('PRAGMA table_info(orders)').all().map((c) => c.name));
+  if (!oc.has('split')) db.exec('ALTER TABLE orders ADD COLUMN split INTEGER NOT NULL DEFAULT 0');
+}
+
 // ─── Tickets (atendimento sem bot) ──────────────────────────────────────────
 // Um "painel" é uma mensagem com botões que a staff posta num canal. Cada botão (opção)
 // abre um canal privado só com quem abriu, as pessoas adicionadas e a staff.

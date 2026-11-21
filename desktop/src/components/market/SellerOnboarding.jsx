@@ -683,9 +683,9 @@ function BankStep({ api, v, options, onSaved }) {
       <div style={st.futureCard}>
         <span style={st.futureIcon}><WalletIcon size={18} /></span>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-hi)' }}>Receber direto no Mercado Pago <span style={st.soon}>em breve</span></div>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-hi)' }}>Quer receber na hora? <span style={st.soon}>depois da aprovação</span></div>
           <div style={{ fontSize: 12.5, color: 'var(--text-low)', marginTop: 2, lineHeight: 1.45 }}>
-            Logo você vai poder conectar sua conta do Mercado Pago e receber cada venda na hora, sem esperar o repasse.
+            Com a loja aprovada, conecte sua conta do Mercado Pago e cada venda cai direto pra você. Essa conta bancária fica de reserva pro repasse por Pix.
           </div>
         </div>
       </div>

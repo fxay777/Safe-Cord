@@ -34,11 +34,12 @@ function providerLabel() {
 }
 
 // ─── Mercado Pago ───────────────────────────────────────────────────────────
-async function mp(method, path, body) {
+// token: por padrão o do SafeCord; no pagamento direto, o do vendedor (a venda é dele)
+async function mp(method, path, body, token = MP_TOKEN) {
   const res = await fetch(`${MP_API}${path}`, {
     method,
     headers: {
-      Authorization: `Bearer ${MP_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       // Evita cobrança duplicada se a mesma criação for reenviada
       ...(method === 'POST' ? { 'X-Idempotency-Key': crypto.randomUUID() } : {}),
@@ -67,9 +68,12 @@ function returnUrls() {
  * items: [{ title, description?, unitCents, quantity, imageUrl? }]
  * reference: nosso id (pedido/compra) — volta no pagamento como external_reference
  */
-async function createCheckout({ reference, items, metadata = {} }) {
+async function createCheckout({ reference, items, metadata = {}, split = null }) {
   const which = provider();
+  // split: { sellerToken, feeCents, notifyTag } → cobra na conta do vendedor e o Mercado Pago
+  // separa a taxa do SafeCord sozinho (marketplace_fee). Só existe no Mercado Pago.
   if (which === 'mercadopago') {
+    const notify = `${APP_URL}/api/payments/mercadopago/webhook?source_news=webhooks${split?.notifyTag ? `&s=${encodeURIComponent(split.notifyTag)}` : ''}`;
     const preference = await mp('POST', '/checkout/preferences', {
       items: items.map((it) => ({
         title: it.title.slice(0, 250),
@@ -83,12 +87,10 @@ async function createCheckout({ reference, items, metadata = {} }) {
       metadata: { ...metadata, reference },
       back_urls: returnUrls(),
       // O Mercado Pago só aceita voltar sozinho e mandar webhook pra endereços públicos (https)
-      ...(PUBLIC_HTTPS ? {
-        auto_return: 'approved',
-        notification_url: `${APP_URL}/api/payments/mercadopago/webhook?source_news=webhooks`,
-      } : {}),
+      ...(PUBLIC_HTTPS ? { auto_return: 'approved', notification_url: notify } : {}),
+      ...(split ? { marketplace_fee: Number((split.feeCents / 100).toFixed(2)) } : {}),
       statement_descriptor: 'SAFECORD',
-    });
+    }, split?.sellerToken || MP_TOKEN);
     return { url: preference.init_point, providerRef: preference.id, provider: which };
   }
 
@@ -120,9 +122,9 @@ async function createCheckout({ reference, items, metadata = {} }) {
 /**
  * Consulta o provedor e diz se a cobrança já foi paga: 'paid' | 'pending' | 'failed'.
  */
-async function checkStatus({ reference, providerRef, provider: which = provider() }) {
+async function checkStatus({ reference, providerRef, provider: which = provider(), token = null }) {
   if (which === 'mercadopago' && MP_TOKEN) {
-    const data = await mp('GET', `/v1/payments/search?external_reference=${encodeURIComponent(reference)}&sort=date_created&criteria=desc`);
+    const data = await mp('GET', `/v1/payments/search?external_reference=${encodeURIComponent(reference)}&sort=date_created&criteria=desc`, null, token || MP_TOKEN);
     const results = data.results || [];
     if (results.some((p) => p.status === 'approved' && p.external_reference === reference)) return 'paid';
     if (results.some((p) => ['pending', 'in_process', 'authorized'].includes(p.status))) return 'pending';
@@ -162,14 +164,20 @@ function validMercadoPagoSignature(req, dataId) {
  * Trata o webhook do Mercado Pago. Devolve a referência (nosso id) SE o pagamento foi
  * aprovado — conferido na API, não no corpo da notificação. Senão devolve null.
  */
-async function resolveMercadoPagoWebhook(req) {
+async function resolveMercadoPagoWebhook(req, { tokenFor } = {}) {
   const type = req.query.type || req.query.topic || req.body?.type;
   const dataId = req.query['data.id'] || req.query.id || req.body?.data?.id;
   if (type !== 'payment' || !dataId) return { ignored: true };
   if (!validMercadoPagoSignature(req, dataId)) return { invalidSignature: true };
-  const payment = await mp('GET', `/v1/payments/${encodeURIComponent(dataId)}`);
+  // Venda com pagamento direto: o pagamento está na conta do vendedor (tag "s" = loja)
+  const sellerToken = req.query.s && tokenFor ? await tokenFor(String(req.query.s)) : null;
+  const payment = await mp('GET', `/v1/payments/${encodeURIComponent(dataId)}`, null, sellerToken || MP_TOKEN);
   if (payment.status !== 'approved' || !payment.external_reference) return { reference: null };
-  return { reference: payment.external_reference };
+  return {
+    reference: payment.external_reference,
+    amountCents: Math.round(Number(payment.transaction_amount || 0) * 100),
+    sellerTag: sellerToken ? String(req.query.s) : null,
+  };
 }
 
 module.exports = {
@@ -180,5 +188,7 @@ module.exports = {
   resolveMercadoPagoWebhook,
   validMercadoPagoSignature,
   stripeClient: () => stripe,
+  mpRequest: mp,
+  MP_API,
   APP_URL,
 };
