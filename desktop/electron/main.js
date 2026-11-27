@@ -6,7 +6,8 @@ const path = require('path');
 // entrava na call, via todo mundo, mas não ouvia ninguém. Precisa vir antes do app ficar pronto.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-const isDev = !app.isPackaged;
+// SAFECORD_USE_DIST=1 abre a versão compilada mesmo sem empacotar (usado nos testes do app)
+const isDev = !app.isPackaged && process.env.SAFECORD_USE_DIST !== '1';
 
 // ─── Compartilhamento de tela ───────────────────────────────────────────────
 // No Electron, navigator.mediaDevices.getDisplayMedia() NÃO funciona sozinho: o processo

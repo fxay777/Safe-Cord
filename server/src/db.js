@@ -380,6 +380,13 @@ for (const table of ['purchases', 'orders']) {
 }
 ensureConversationColumns();
 
+// ─── Opções dos canais de voz ───────────────────────────────────────────────
+{
+  const ch = new Set(db.prepare('PRAGMA table_info(channels)').all().map((c) => c.name));
+  if (!ch.has('user_limit')) db.exec('ALTER TABLE channels ADD COLUMN user_limit INTEGER NOT NULL DEFAULT 0'); // 0 = sem limite
+  if (!ch.has('bitrate')) db.exec('ALTER TABLE channels ADD COLUMN bitrate INTEGER NOT NULL DEFAULT 64');     // kbps do áudio
+}
+
 // ─── Mercado Pago dos vendedores (pagamento direto / split) ─────────────────
 // O vendedor conecta a conta dele (OAuth). Cada venda é cobrada no nome dele e o
 // Mercado Pago separa a taxa do SafeCord (marketplace_fee) automaticamente.

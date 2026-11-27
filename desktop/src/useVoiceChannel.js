@@ -12,6 +12,27 @@ const ICE_SERVERS = [
   { urls: 'turn:global.relay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 
+// Qualidades do compartilhamento de tela (o seletor mostra essas opções)
+export const SCREEN_QUALITIES = {
+  '720p30': { label: '720p · 30 fps', width: 1280, height: 720, fps: 30, bitrate: 2_500_000 },
+  '1080p30': { label: '1080p · 30 fps', width: 1920, height: 1080, fps: 30, bitrate: 4_500_000 },
+  '1080p60': { label: '1080p · 60 fps', width: 1920, height: 1080, fps: 60, bitrate: 6_500_000 },
+};
+
+// Ajusta o limite de bits de um "sender" (áudio da voz ou vídeo da tela). Pode falhar antes da
+// negociação terminar em versões antigas do Chromium — por isso também tentamos de novo depois.
+async function tuneSender(sender, { maxBitrate, maxFramerate, degradation } = {}) {
+  if (!sender?.getParameters) return;
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+    if (maxBitrate) params.encodings[0].maxBitrate = maxBitrate;
+    if (maxFramerate) params.encodings[0].maxFramerate = maxFramerate;
+    if (degradation) params.degradationPreference = degradation;
+    await sender.setParameters(params);
+  } catch { /* ainda não negociado: tenta de novo quando conectar */ }
+}
+
 // Gerencia uma sala de voz em topologia mesh (cada peer conecta com todos os outros).
 // Bom o suficiente para grupos pequenos (2-8 pessoas), que é o uso típico de servidores da galera.
 export function useVoiceChannel(socket) {
@@ -33,6 +54,11 @@ export function useVoiceChannel(socket) {
   const outputVolumeRef = useRef(1);
   const deafenedRef = useRef(false);
   const outputDeviceIdRef = useRef('');
+  const roomInfoRef = useRef({ bitrate: 64, userLimit: 0, kind: 'server' });
+  const screenQualityRef = useRef(SCREEN_QUALITIES['1080p30']);
+  const pendingIceRef = useRef(new Map()); // socketId -> [candidates] que chegaram antes da descrição remota
+  const [roomId, setRoomId] = useState(null);
+  const [roomInfo, setRoomInfo] = useState(null);
 
   const removeRemoteShare = useCallback((peerSocketId) => {
     setRemoteScreenShares((prev) => {
@@ -70,6 +96,28 @@ export function useVoiceChannel(socket) {
         el.srcObject = null;
         audioElsRef.current.delete(key);
       }
+    }
+  }, []);
+
+  const tunePeer = useCallback((pc) => {
+    for (const sender of pc.getSenders()) {
+      if (!sender.track) continue;
+      const isScreen = localScreenStreamRef.current?.getTracks().includes(sender.track);
+      if (sender.track.kind === 'audio' && !isScreen) {
+        tuneSender(sender, { maxBitrate: (roomInfoRef.current.bitrate || 64) * 1000 });
+      } else if (sender.track.kind === 'video') {
+        const q = screenQualityRef.current;
+        tuneSender(sender, { maxBitrate: q.bitrate, maxFramerate: q.fps, degradation: q.fps >= 60 ? 'maintain-framerate' : 'maintain-resolution' });
+      }
+    }
+  }, []);
+
+  const flushIce = useCallback(async (peerSocketId, pc) => {
+    const queued = pendingIceRef.current.get(peerSocketId);
+    if (!queued?.length) return;
+    pendingIceRef.current.delete(peerSocketId);
+    for (const c of queued) {
+      try { await pc.addIceCandidate(c); } catch { /* candidato velho */ }
     }
   }, []);
 
@@ -125,6 +173,7 @@ export function useVoiceChannel(socket) {
       }
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         setError('');
+        tunePeer(pc);
       }
     };
 
@@ -146,7 +195,7 @@ export function useVoiceChannel(socket) {
     };
 
     return pc;
-  }, [socket, playRemoteAudio, removeRemoteShare]);
+  }, [socket, playRemoteAudio, removeRemoteShare, tunePeer]);
 
   const handleSignal = useCallback(async ({ from, signal }) => {
     const pc = createPeerConnection(from);
@@ -159,11 +208,21 @@ export function useVoiceChannel(socket) {
         if (pc.__ignoreOffer) return;
 
         await pc.setRemoteDescription(description); // rollback implícito se colidiu
+        await flushIce(from, pc);
         if (description.type === 'offer') {
           await pc.setLocalDescription();
           socket.emit('voice:signal', { to: from, signal: { type: 'answer', sdp: pc.localDescription } });
         }
+        tunePeer(pc);
       } else if (signal.type === 'ice-candidate') {
+        // Candidato que chega antes da descrição remota era jogado fora (addIceCandidate falha)
+        // e a conexão às vezes nunca fechava — agora fica na fila até a descrição chegar.
+        if (!pc.remoteDescription) {
+          const list = pendingIceRef.current.get(from) || [];
+          list.push(signal.candidate);
+          pendingIceRef.current.set(from, list);
+          return;
+        }
         try {
           await pc.addIceCandidate(signal.candidate);
         } catch (e) {
@@ -173,16 +232,30 @@ export function useVoiceChannel(socket) {
     } catch (e) {
       console.warn('Erro de sinalização com', from, e);
     }
-  }, [socket, createPeerConnection]);
+  }, [socket, createPeerConnection, flushIce, tunePeer]);
 
   const join = useCallback(async (channelId, options = {}) => {
     const { inputDeviceId, startMuted = false, outputDeviceId = '', outputVolume = 1 } = options;
     setError('');
     setConnecting(true);
 
+    // Pergunta antes ao servidor se pode entrar (membro? canal cheio?) — sem pedir microfone à toa
+    const answer = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu. Tente de novo.' }), 8000);
+      socket.emit('voice:join-check', { channelId }, (res) => { clearTimeout(timer); resolve(res || { ok: true }); });
+    });
+    if (answer?.error) {
+      setConnecting(false);
+      setError(answer.error);
+      throw new Error(answer.error);
+    }
+
     let stream;
     try {
-      const audioConstraints = inputDeviceId ? { deviceId: { exact: inputDeviceId } } : true;
+      const audioConstraints = {
+        ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {}),
+        echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      };
       stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
     } catch (err) {
       setConnecting(false);
@@ -210,7 +283,7 @@ export function useVoiceChannel(socket) {
     });
 
     socket.on('voice:peer-joined', ({ socketId, user }) => {
-      setParticipants((prev) => [...prev, { socketId, user }]);
+      setParticipants((prev) => (prev.some((p) => p.socketId === socketId) ? prev : [...prev, { socketId, user }]));
       createPeerConnection(socketId);
       playPeerJoinSound();
     });
@@ -224,16 +297,33 @@ export function useVoiceChannel(socket) {
     socket.on('voice:peer-left', ({ socketId }) => {
       peersRef.current.get(socketId)?.close();
       peersRef.current.delete(socketId);
+      pendingIceRef.current.delete(socketId);
       dropPeerAudio(socketId);
       removeRemoteShare(socketId);
       setParticipants((prev) => prev.filter((p) => p.socketId !== socketId));
       playPeerLeaveSound();
     });
 
-    socket.emit('voice:join', channelId);
+    const joined = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu. Tente de novo.' }), 8000);
+      socket.emit('voice:join', { channelId }, (res) => { clearTimeout(timer); resolve(res || { ok: true }); });
+    });
+    if (joined?.error) {
+      ['voice:existing-peers', 'voice:peer-joined', 'voice:signal', 'voice:screen-state', 'voice:peer-left'].forEach((e) => socket.off(e));
+      stream.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+      channelIdRef.current = null;
+      setConnecting(false);
+      setError(joined.error);
+      throw new Error(joined.error);
+    }
+    roomInfoRef.current = { bitrate: joined.bitrate || 64, userLimit: joined.userLimit || 0, kind: joined.kind || 'server' };
+    setRoomInfo(roomInfoRef.current);
+    setRoomId(channelId);
     setConnected(true);
     setConnecting(false);
     playJoinSound();
+    return roomInfoRef.current;
   }, [socket, createPeerConnection, handleSignal, removeRemoteShare, dropPeerAudio, deafened]);
 
   const leave = useCallback(() => {
@@ -264,6 +354,9 @@ export function useVoiceChannel(socket) {
     deafenedRef.current = false;
     setError('');
     channelIdRef.current = null;
+    pendingIceRef.current.clear();
+    setRoomId(null);
+    setRoomInfo(null);
     playLeaveSound();
   }, [socket]);
 
@@ -276,45 +369,68 @@ export function useVoiceChannel(socket) {
     return window.safecord.getScreenSources();
   }, []);
 
-  // Pede a tela (ou uma janela) e manda o vídeo pra todo mundo na call — WebRTC de
-  // verdade, na mesma malha usada pelo áudio. sourceId vem do seletor no app desktop.
-  const startScreenShare = useCallback(async (sourceId) => {
+  // Pede a tela (ou uma janela) e manda o vídeo pra todo mundo na call.
+  // App desktop: captura direto pelo Electron (getUserMedia com chromeMediaSource "desktop"
+  // e o id da fonte escolhida no seletor) — não depende do getDisplayMedia, que falhava no app.
+  // Navegador: getDisplayMedia normal (o navegador mostra o seletor dele).
+  const startScreenShare = useCallback(async (opts = {}) => {
+    const { sourceId = null, quality = '1080p30', withAudio = false } = typeof opts === 'string' ? { sourceId: opts } : opts;
     if (!localStreamRef.current) {
-      setError('Entre em um canal de voz antes de compartilhar a tela.');
+      setError('Entre em uma chamada antes de compartilhar a tela.');
       throw new Error('not-in-call');
     }
     if (localScreenStreamRef.current) return;
+    const q = SCREEN_QUALITIES[quality] || SCREEN_QUALITIES['1080p30'];
+    screenQualityRef.current = q;
 
     let stream;
     try {
-      if (sourceId && window.safecord?.selectScreenSource) {
-        await window.safecord.selectScreenSource(sourceId);
+      if (sourceId && window.safecord?.isDesktop) {
+        const video = {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: sourceId,
+            maxWidth: q.width, maxHeight: q.height, maxFrameRate: q.fps, minFrameRate: Math.min(15, q.fps),
+          },
+        };
+        // Som do sistema: só o Windows entrega (loopback)
+        const audio = withAudio && window.safecord.platform === 'win32' ? { mandatory: { chromeMediaSource: 'desktop' } } : false;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio, video });
+        } catch (err) {
+          if (!audio) throw err;
+          stream = await navigator.mediaDevices.getUserMedia({ audio: false, video }); // sem áudio, mas compartilha
+        }
+      } else {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { width: { ideal: q.width }, height: { ideal: q.height }, frameRate: { ideal: q.fps, max: q.fps } },
+          audio: withAudio,
+        });
       }
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 30, max: 30 } },
-        audio: true, // som do sistema quando o SO permite (Windows)
-      });
     } catch (err) {
       if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') return; // cancelou
-      setError('Não foi possível iniciar o compartilhamento de tela.');
+      setError(window.safecord?.platform === 'darwin'
+        ? 'Não foi possível capturar a tela. No macOS, libere "Gravação de Tela" pro SafeCord em Ajustes do Sistema › Privacidade.'
+        : 'Não foi possível iniciar o compartilhamento de tela.');
       throw err;
     }
 
     const [videoTrack] = stream.getVideoTracks();
-    if (videoTrack && 'contentHint' in videoTrack) videoTrack.contentHint = 'detail';
+    if (videoTrack && 'contentHint' in videoTrack) videoTrack.contentHint = q.fps >= 60 ? 'motion' : 'detail';
 
     localScreenStreamRef.current = stream;
     setScreenSharing(true);
     setError('');
-    // "Parar de compartilhar" na barra nativa do SO também encerra aqui
+    // "Parar de compartilhar" na barra nativa do SO (ou a janela fechada) também encerra aqui
     if (videoTrack) videoTrack.onended = () => stopScreenShareRef.current?.();
 
     // addTrack dispara onnegotiationneeded em cada conexão → a oferta sai sozinha
     peersRef.current.forEach((pc) => {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      tunePeer(pc);
     });
-    socket.emit('voice:screen-state', { sharing: true });
-  }, [socket]);
+    socket.emit('voice:screen-state', { sharing: true, streamId: stream.id });
+  }, [socket, tunePeer]);
 
   const stopScreenShare = useCallback(() => {
     const stream = localScreenStreamRef.current;
@@ -333,6 +449,16 @@ export function useVoiceChannel(socket) {
   }, [socket]);
 
   stopScreenShareRef.current = stopScreenShare;
+
+  // Diagnóstico (sem dados pessoais): estado de cada conexão e o que está sendo enviado.
+  // Útil pra suporte: no console do app, rode __safecordVoiceStats()
+  if (typeof window !== 'undefined') {
+    window.__safecordVoiceStats = () => [...peersRef.current.entries()].map(([id, pc]) => ({
+      peer: id, ice: pc.iceConnectionState, signaling: pc.signalingState, connection: pc.connectionState,
+      sending: pc.getSenders().filter((x) => x.track).map((x) => `${x.track.kind}:${x.track.readyState}`),
+      receiving: pc.getReceivers().filter((x) => x.track).map((x) => `${x.track.kind}:${x.track.readyState}:${x.track.muted ? 'muted' : 'live'}`),
+    }));
+  }
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
@@ -405,5 +531,7 @@ export function useVoiceChannel(socket) {
     getScreenSources,
     localScreenStream: screenSharing ? localScreenStreamRef.current : null,
     channelId: channelIdRef.current,
+    roomId,
+    roomInfo,
   };
 }

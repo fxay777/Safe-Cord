@@ -12,6 +12,9 @@ import MarketView from './market/MarketView';
 import friendsIcon from '../assets/friends-icon.png';
 
 export default function DirectMessagesView({
+  dmCalls = {},
+  currentVoiceRoom = null,
+  onStartCall,
   onOpenUserProfile,
   api,
   socket,
@@ -38,6 +41,7 @@ export default function DirectMessagesView({
   remoteScreenShares,
   onViewScreenShare,
   initialPanel = 'friends',
+  focusConversation = null, // { id, nonce } — abre essa conversa (ex.: atendeu uma chamada)
 }) {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
@@ -54,6 +58,18 @@ export default function DirectMessagesView({
   }, [api]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  useEffect(() => {
+    if (!focusConversation?.id) return;
+    let alive = true;
+    (async () => {
+      let list = conversations;
+      if (!list.some((c) => c.id === focusConversation.id)) list = await loadConversations();
+      const conv = list.find((c) => c.id === focusConversation.id);
+      if (alive && conv && activeConversation?.id !== conv.id) openConversation(conv);
+    })();
+    return () => { alive = false; };
+  }, [focusConversation?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mensagens e avisos em tempo real
   useEffect(() => {
@@ -272,6 +288,11 @@ export default function DirectMessagesView({
             isDM
             user={user}
             onOpenProfile={onOpenUserProfile}
+            callTools={{
+              participants: dmCalls[activeConversation.id] || [],
+              inThisCall: currentVoiceRoom === `dm:${activeConversation.id}`,
+              onCall: () => onStartCall?.(activeConversation, chatChannel?.name),
+            }}
             onRenameGroup={activeConversation.isGroup ? handleRenameGroup : null}
             onLeaveGroup={activeConversation.isGroup ? handleLeaveGroup : null}
           />

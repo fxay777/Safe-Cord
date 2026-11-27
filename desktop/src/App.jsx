@@ -20,6 +20,8 @@ import DirectMessagesView from './components/DirectMessagesView';
 import SettingsModal from './components/SettingsModal';
 import ProfileEditModal from './components/ProfileEditModal';
 import ProfileViewer from './components/ProfileViewer';
+import IncomingCallModal from './components/IncomingCallModal';
+import { startRingtone, startDialTone } from './sounds';
 
 export default function App() {
   const accountsHook = useAccounts();
@@ -46,6 +48,11 @@ export default function App() {
   const [roles, setRoles] = useState([]);
   const [viewingScreenShare, setViewingScreenShare] = useState(null); // socketId | null
   const [screenPickerOpen, setScreenPickerOpen] = useState(false);
+  // Chamadas privadas: quem está em chamada em cada conversa, a chamada tocando agora e o nome da sala
+  const [dmCalls, setDmCalls] = useState({}); // conversationId -> participants[]
+  const [incomingCall, setIncomingCall] = useState(null); // { conversationId, caller, isGroup }
+  const [voiceRoomLabel, setVoiceRoomLabel] = useState('');
+  const [focusConversation, setFocusConversation] = useState(null); // { id, nonce }
   const [shopOpen, setShopOpen] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(null); // {devCode} logo após o cadastro
   const [skippedVerification, setSkippedVerification] = useState(false);
@@ -92,9 +99,105 @@ export default function App() {
   // ativa quando conectado, ou a preferência salva pra próxima vez que entrar numa call.
   const micMuted = voice.connected ? voice.muted : settings.audio.joinMuted;
   const deafened = voice.connected ? voice.deafened : settings.audio.joinDeafened;
-  const voiceChannelName = servers
-    .flatMap((s) => s.channels || [])
-    .find((c) => c.id === voiceChannelId)?.name;
+  const voiceChannelName = voiceChannelId?.startsWith('dm:')
+    ? voiceRoomLabel || 'Chamada privada'
+    : servers.flatMap((s) => s.channels || []).find((c) => c.id === voiceChannelId)?.name;
+
+  async function joinVoiceRoom(roomId, label = '') {
+    if (voice.connected) voice.leave();
+    try {
+      await voice.join(roomId, {
+        inputDeviceId: settings.audio.inputDeviceId,
+        outputDeviceId: settings.audio.outputDeviceId,
+        outputVolume: settings.audio.outputVolume / 100,
+        startMuted: settings.audio.joinMuted || settings.audio.joinDeafened,
+      });
+    } catch (err) {
+      console.error('Falha ao entrar na chamada:', err);
+      return false; // o erro já fica visível via voice.error / aviso
+    }
+    if (settings.audio.joinDeafened) voice.toggleDeafen();
+    setVoiceChannelId(roomId);
+    setVoiceRoomLabel(label);
+    return true;
+  }
+
+  function leaveVoiceRoom() {
+    voice.leave();
+    setVoiceChannelId(null);
+    setVoiceRoomLabel('');
+  }
+
+  // ─── Chamadas privadas ──────────────────────────────────────────────────
+  async function startDmCall(conversation, label) {
+    const roomId = `dm:${conversation.id}`;
+    if (voiceChannelId === roomId) return;
+    const alreadyRunning = (dmCalls[conversation.id] || []).length > 0;
+    const ok = await joinVoiceRoom(roomId, label);
+    if (ok && !alreadyRunning) socket.emit('dm:call:ring', { conversationId: conversation.id });
+  }
+
+  async function acceptIncomingCall() {
+    const call = incomingCall;
+    setIncomingCall(null);
+    if (!call) return;
+    // Leva pra conversa: é lá que fica a barra da chamada (tela compartilhada, sair…)
+    setView('friends');
+    setFocusConversation({ id: call.conversationId, nonce: Date.now() });
+    await joinVoiceRoom(`dm:${call.conversationId}`, call.isGroup ? 'Chamada em grupo' : (call.caller?.display_name || call.caller?.username || 'Chamada'));
+  }
+
+  function declineIncomingCall() {
+    if (incomingCall) socket.emit('dm:call:decline', { conversationId: incomingCall.conversationId });
+    setIncomingCall(null);
+  }
+
+  // Toque enquanto a chamada chega; "chamando…" enquanto eu ligo e ninguém entrou
+  useEffect(() => {
+    if (!incomingCall) return undefined;
+    const stop = startRingtone();
+    const timeout = setTimeout(() => setIncomingCall(null), 30000);
+    return () => { stop(); clearTimeout(timeout); };
+  }, [incomingCall]);
+
+  const dialing = Boolean(voice.connected && voiceChannelId?.startsWith('dm:') && voice.participants.length === 0);
+  useEffect(() => {
+    if (!dialing) return undefined;
+    const stop = startDialTone();
+    const giveUp = setTimeout(() => { stop(); setNotice('Ninguém atendeu ainda — você continua na chamada esperando.'); }, 30000);
+    return () => { stop(); clearTimeout(giveUp); };
+  }, [dialing]);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onState = ({ conversationId, participants }) => setDmCalls((prev) => {
+      const next = { ...prev };
+      if (participants.length) next[conversationId] = participants; else delete next[conversationId];
+      return next;
+    });
+    const onIncoming = (call) => {
+      if (voiceChannelId === `dm:${call.conversationId}`) return;
+      setIncomingCall(call);
+    };
+    const onDismissed = ({ conversationId }) => setIncomingCall((c) => (c?.conversationId === conversationId ? null : c));
+    const onDeclined = ({ username }) => setNotice(`${username} recusou a chamada`);
+    socket.on('dm:call:state', onState);
+    socket.on('dm:call:incoming', onIncoming);
+    socket.on('dm:call:dismissed', onDismissed);
+    socket.on('dm:call:declined', onDeclined);
+    socket.emit('dm:call:sync');
+    return () => {
+      socket.off('dm:call:state', onState);
+      socket.off('dm:call:incoming', onIncoming);
+      socket.off('dm:call:dismissed', onDismissed);
+      socket.off('dm:call:declined', onDeclined);
+    };
+  }, [socket, voiceChannelId]);
+
+  // Ligação chegando de uma conversa em que eu já entrei: some o aviso
+  useEffect(() => {
+    if (incomingCall && voiceChannelId === `dm:${incomingCall.conversationId}`) setIncomingCall(null);
+  }, [voiceChannelId, incomingCall]);
 
   function handleToggleMic() {
     if (voice.connected) {
@@ -131,20 +234,13 @@ export default function App() {
       voice.stopScreenShare();
       return;
     }
-    if (window.safecord?.getScreenSources) {
-      setScreenPickerOpen(true);
-      return;
-    }
-    try {
-      await voice.startScreenShare();
-    } catch (err) {
-      console.error('Falha ao compartilhar tela:', err);
-    }
+    // Sempre abre o seletor: no app lista telas/janelas; no navegador escolhe a qualidade
+    setScreenPickerOpen(true);
   }
 
-  async function handlePickScreenSource(sourceId) {
+  async function handlePickScreenSource(opts) {
     try {
-      await voice.startScreenShare(sourceId);
+      await voice.startScreenShare(opts);
       setScreenPickerOpen(false);
     } catch (err) {
       console.error('Falha ao compartilhar tela:', err);
@@ -482,23 +578,10 @@ export default function App() {
   async function selectChannel(channel) {
     if (channel.type === 'voice') {
       if (voice.connected && voiceChannelId === channel.id) {
-        voice.leave();
-        setVoiceChannelId(null);
+        leaveVoiceRoom();
       } else {
-        if (voice.connected) voice.leave();
-        try {
-          await voice.join(channel.id, {
-            inputDeviceId: settings.audio.inputDeviceId,
-            outputDeviceId: settings.audio.outputDeviceId,
-            outputVolume: settings.audio.outputVolume / 100,
-            startMuted: settings.audio.joinMuted || settings.audio.joinDeafened,
-          });
-        } catch (err) {
-          console.error('Falha ao entrar no canal de voz:', err);
-          return; // o erro já fica visível via voice.error (mostrado no VoiceBar)
-        }
-        if (settings.audio.joinDeafened) voice.toggleDeafen();
-        setVoiceChannelId(channel.id);
+        const ok = await joinVoiceRoom(channel.id, channel.name);
+        if (!ok && voice.error) setNotice(voice.error);
       }
       return;
     }
@@ -689,13 +772,17 @@ export default function App() {
           voiceParticipants={voice.participants}
           voiceError={voice.error}
           onToggleVoiceMute={voice.toggleMute}
-          onLeaveVoice={() => { voice.leave(); setVoiceChannelId(null); }}
+          onLeaveVoice={leaveVoiceRoom}
           onUploadAttachment={(file) => uploadMessageAttachment(api, file)}
           screenSharing={voice.screenSharing}
           onToggleScreenShare={handleToggleScreenShare}
           remoteScreenShares={voice.remoteScreenShares}
           onViewScreenShare={setViewingScreenShare}
           onOpenShop={() => setShopOpen(true)}
+          dmCalls={dmCalls}
+          focusConversation={focusConversation}
+          currentVoiceRoom={voiceChannelId}
+          onStartCall={startDmCall}
         />
         </ErrorBoundary>
       ) : (
@@ -741,7 +828,7 @@ export default function App() {
               voiceParticipants={voice.participants}
               voiceError={voice.error}
               onToggleVoiceMute={voice.toggleMute}
-              onLeaveVoice={() => { voice.leave(); setVoiceChannelId(null); }}
+              onLeaveVoice={leaveVoiceRoom}
               screenSharing={voice.screenSharing}
               onToggleScreenShare={handleToggleScreenShare}
               remoteScreenShares={voice.remoteScreenShares}
@@ -837,6 +924,10 @@ export default function App() {
         <div style={styles.notice} onClick={() => setNotice(null)} role="status">
           {notice}
         </div>
+      )}
+
+      {incomingCall && (
+        <IncomingCallModal call={incomingCall} onAccept={acceptIncomingCall} onDecline={declineIncomingCall} />
       )}
 
       {screenPickerOpen && (

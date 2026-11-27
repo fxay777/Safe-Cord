@@ -153,3 +153,6 @@ input:focus-visible,
 .sc-ticket-option { transition: border-color .15s ease, background .15s ease, transform .1s ease; }
 .sc-ticket-option:hover:not(:disabled) { border-color: var(--opt) !important; background: color-mix(in srgb, var(--opt) 9%, var(--bg-surface)) !important; }
 .sc-ticket-option:active:not(:disabled) { transform: scale(0.98); }
+
+@keyframes scPulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent); } 50% { box-shadow: 0 0 0 10px transparent; } }
+.sc-call-accept { animation: scPulse 1.4s ease-in-out infinite; }

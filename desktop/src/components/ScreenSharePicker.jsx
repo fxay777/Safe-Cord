@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { ScreenShareIcon, CloseIcon } from './Icons';
+import { SCREEN_QUALITIES } from '../useVoiceChannel';
 
-// Seletor de tela/janela no estilo do Discord. Só aparece no app desktop (Electron);
-// no navegador o próprio navegador mostra o seletor nativo dele.
+const PREF_KEY = 'safecord_screen_prefs';
+function loadPrefs() {
+  try { return { quality: '1080p30', withAudio: false, ...JSON.parse(localStorage.getItem(PREF_KEY) || '{}') }; } catch { return { quality: '1080p30', withAudio: false }; }
+}
+
+// Seletor de tela/janela no estilo do Discord. No app desktop lista as telas e janelas;
+// no navegador só escolhe a qualidade e o próprio navegador mostra o seletor dele depois.
 export default function ScreenSharePicker({ loadSources, onPick, onClose }) {
-  const [sources, setSources] = useState(null);
+  const desktop = Boolean(window.safecord?.isDesktop);
+  const audioPossible = !desktop || window.safecord?.platform === 'win32';
+  const [prefs, setPrefs] = useState(loadPrefs);
+  const savePrefs = (next) => { setPrefs(next); try { localStorage.setItem(PREF_KEY, JSON.stringify(next)); } catch { /* ok */ } };
+  const [sources, setSources] = useState(desktop ? null : []);
   const [tab, setTab] = useState('screen'); // 'screen' | 'window'
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState('');
@@ -22,10 +32,11 @@ export default function ScreenSharePicker({ loadSources, onPick, onClose }) {
   }
 
   useEffect(() => {
+    if (!desktop) return undefined;
     refresh();
     const timer = setInterval(refresh, 4000); // miniaturas atualizadas, como no Discord
     return () => clearInterval(timer);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -35,11 +46,11 @@ export default function ScreenSharePicker({ loadSources, onPick, onClose }) {
 
   const visible = (sources || []).filter((s) => s.kind === tab);
 
-  async function start() {
-    if (!selected) return;
+  async function start(id = selected) {
+    if (desktop && !id) return;
     setStarting(true);
     try {
-      await onPick(selected);
+      await onPick({ sourceId: desktop ? id : null, quality: prefs.quality, withAudio: audioPossible && prefs.withAudio });
     } finally {
       setStarting(false);
     }
@@ -53,7 +64,7 @@ export default function ScreenSharePicker({ loadSources, onPick, onClose }) {
           <button style={styles.closeBtn} onClick={onClose} aria-label="Fechar"><CloseIcon size={16} /></button>
         </div>
 
-        <div style={styles.tabs}>
+        {desktop && <div style={styles.tabs}>
           {[['screen', 'Telas'], ['window', 'Janelas']].map(([key, label]) => (
             <button
               key={key}
@@ -63,9 +74,9 @@ export default function ScreenSharePicker({ loadSources, onPick, onClose }) {
               {label}
             </button>
           ))}
-        </div>
+        </div>}
 
-        <div style={styles.body}>
+        {desktop && <div style={styles.body}>
           {error && <div style={styles.error}>{error}</div>}
           {sources === null && <div style={styles.hint}>Procurando telas e janelas…</div>}
           {sources !== null && visible.length === 0 && !error && (
@@ -80,7 +91,7 @@ export default function ScreenSharePicker({ loadSources, onPick, onClose }) {
                   key={s.id}
                   style={{ ...styles.card, ...(active ? styles.cardActive : {}) }}
                   onClick={() => setSelected(s.id)}
-                  onDoubleClick={() => { setSelected(s.id); onPick(s.id); }}
+                  onDoubleClick={() => { setSelected(s.id); start(s.id); }}
                 >
                   <div style={styles.thumbWrap}>
                     {s.thumbnail
@@ -95,16 +106,44 @@ export default function ScreenSharePicker({ loadSources, onPick, onClose }) {
               );
             })}
           </div>
+        </div>}
+
+        {!desktop && (
+          <div style={{ ...styles.hint, padding: '6px 22px 4px', textAlign: 'left' }}>
+            Escolha a qualidade e clique em <strong>Escolher tela</strong> — o navegador vai perguntar qual tela, janela ou aba você quer mostrar.
+          </div>
+        )}
+
+        <div style={styles.options}>
+          <div>
+            <div style={styles.optLabel}>Qualidade</div>
+            <div style={styles.segmented}>
+              {Object.entries(SCREEN_QUALITIES).map(([id, q]) => (
+                <button key={id} type="button" onClick={() => savePrefs({ ...prefs, quality: id })} style={{ ...styles.seg, ...(prefs.quality === id ? styles.segOn : {}) }}>
+                  {q.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {audioPossible && (
+            <label style={styles.audioToggle}>
+              <input type="checkbox" checked={prefs.withAudio} onChange={(e) => savePrefs({ ...prefs, withAudio: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+              <span>
+                Transmitir o som {desktop ? 'do computador' : 'da aba/tela'}
+                <span style={styles.optHint}>{desktop ? 'Use fone de ouvido — senão o pessoal da call se escuta de volta.' : 'Funciona melhor compartilhando uma aba do navegador.'}</span>
+              </span>
+            </label>
+          )}
         </div>
 
         <div style={styles.footer}>
           <button style={styles.cancelBtn} onClick={onClose}>Cancelar</button>
           <button
-            style={{ ...styles.goBtn, opacity: selected && !starting ? 1 : 0.5 }}
-            disabled={!selected || starting}
-            onClick={start}
+            style={{ ...styles.goBtn, opacity: (selected || !desktop) && !starting ? 1 : 0.5 }}
+            disabled={(desktop && !selected) || starting}
+            onClick={() => start()}
           >
-            {starting ? 'Iniciando…' : 'Transmitir'}
+            {starting ? 'Iniciando…' : desktop ? 'Transmitir' : 'Escolher tela'}
           </button>
         </div>
       </div>
@@ -156,6 +195,13 @@ const styles = {
     fontSize: 12.5, fontWeight: 600, color: 'var(--text-hi)',
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
+  options: { display: 'flex', alignItems: 'flex-end', gap: 18, flexWrap: 'wrap', padding: '12px 22px 4px' },
+  optLabel: { fontSize: 11.5, fontWeight: 750, color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  segmented: { display: 'flex', gap: 3, padding: 3, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 12 },
+  seg: { border: 'none', background: 'transparent', color: 'var(--text-mid)', fontWeight: 650, fontSize: 12.5, padding: '7px 11px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' },
+  segOn: { background: 'var(--accent)', color: '#fff' },
+  audioToggle: { display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--text-hi)', fontWeight: 600, cursor: 'pointer', maxWidth: 300 },
+  optHint: { display: 'block', fontSize: 11.5, color: 'var(--text-low)', fontWeight: 400, marginTop: 2, lineHeight: 1.4 },
   footer: {
     display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 22px 18px',
     borderTop: '1px solid var(--border)',

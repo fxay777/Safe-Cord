@@ -315,7 +315,24 @@ router.put('/:serverId/channels/:channelId', requireServerPermission('gerenciar_
     }
   }
 
-  db.prepare('UPDATE channels SET name = ?, category_id = ?, topic = ? WHERE id = ?').run(nextName, categoryId, nextTopic, channel.id);
+  // Canal de voz: limite de pessoas (0 = sem limite, até 99) e qualidade do áudio (kbps)
+  let userLimit = channel.user_limit || 0;
+  let bitrate = channel.bitrate || 64;
+  if (channel.type === 'voice') {
+    if (req.body?.user_limit !== undefined) {
+      const n = Number(req.body.user_limit);
+      if (!Number.isInteger(n) || n < 0 || n > 99) return res.status(400).json({ error: 'Limite de pessoas entre 0 (sem limite) e 99' });
+      userLimit = n;
+    }
+    if (req.body?.bitrate !== undefined) {
+      const b = Number(req.body.bitrate);
+      if (![32, 64, 96, 128].includes(b)) return res.status(400).json({ error: 'Qualidade de áudio inválida' });
+      bitrate = b;
+    }
+  }
+
+  db.prepare('UPDATE channels SET name = ?, category_id = ?, topic = ?, user_limit = ?, bitrate = ? WHERE id = ?')
+    .run(nextName, categoryId, nextTopic, userLimit, bitrate, channel.id);
   const updated = db.prepare('SELECT * FROM channels WHERE id = ?').get(channel.id);
   // Todo mundo no servidor vê a mudança (nome/descrição) na hora
   req.app.get('io')?.to(`server:${req.params.serverId}`).emit('channel:updated', { serverId: req.params.serverId, channel: updated });

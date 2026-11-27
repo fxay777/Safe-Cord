@@ -362,7 +362,11 @@ function ChannelRow({ channel, categories, canManage, open, onToggle, onSave, on
   const [name, setName] = useState(channel.name);
   const [topic, setTopic] = useState(channel.topic || '');
   const [cat, setCat] = useState(channel.category_id || '');
-  useEffect(() => { if (open) { setName(channel.name); setTopic(channel.topic || ''); setCat(channel.category_id || ''); } }, [open, channel]);
+  const [limit, setLimit] = useState(channel.user_limit || 0);
+  const [bitrate, setBitrate] = useState(channel.bitrate || 64);
+  useEffect(() => {
+    if (open) { setName(channel.name); setTopic(channel.topic || ''); setCat(channel.category_id || ''); setLimit(channel.user_limit || 0); setBitrate(channel.bitrate || 64); }
+  }, [open, channel]);
   const Icon = channel.type === 'voice' ? SpeakerIcon : HashIcon;
 
   return (
@@ -370,7 +374,11 @@ function ChannelRow({ channel, categories, canManage, open, onToggle, onSave, on
       <button type="button" style={S.chHead} onClick={canManage ? onToggle : undefined}>
         <Icon size={15} style={{ color: 'var(--text-low)', flexShrink: 0 }} />
         <span style={S.chName}>{channel.name}</span>
-        <span style={S.chTopic}>{channel.topic || (channel.type === 'voice' ? 'Canal de voz' : 'Sem descrição')}</span>
+        <span style={S.chTopic}>
+          {channel.type === 'voice'
+            ? `Canal de voz · ${channel.user_limit ? `até ${channel.user_limit} pessoa${channel.user_limit > 1 ? 's' : ''}` : 'sem limite'} · ${channel.bitrate || 64} kbps`
+            : channel.topic || 'Sem descrição'}
+        </span>
         {canManage && <EditIcon size={13} style={{ color: 'var(--text-low)', flexShrink: 0 }} />}
       </button>
       {open && (
@@ -389,11 +397,37 @@ function ChannelRow({ channel, categories, canManage, open, onToggle, onSave, on
               <input style={S.input} value={topic} maxLength={160} placeholder="Sobre o que é esse canal?" onChange={(e) => setTopic(e.target.value)} />
             </Field>
           )}
+          {channel.type === 'voice' && (
+            <>
+              <Field label={`Limite de pessoas: ${limit ? limit : 'sem limite'}`} hint="Quem tem 'Gerenciar canais' entra mesmo com o canal cheio, como no Discord.">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <input type="range" min={0} max={99} value={limit} onChange={(e) => setLimit(Number(e.target.value))} style={{ flex: 1, accentColor: 'var(--accent)' }} aria-label="Limite de pessoas" />
+                  <input type="number" min={0} max={99} value={limit} onChange={(e) => setLimit(Math.max(0, Math.min(99, Number(e.target.value) || 0)))} style={{ ...S.input, width: 74, textAlign: 'center' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {[0, 2, 5, 10, 25].map((n) => (
+                    <button key={n} type="button" onClick={() => setLimit(n)} style={{ ...S.btnGhost, padding: '5px 11px', fontSize: 12, ...(limit === n ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }}>
+                      {n === 0 ? 'Sem limite' : n}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <Field label="Qualidade do áudio" hint="Mais kbps = som melhor, mas gasta mais internet de quem está na call.">
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[[32, 'Econômica'], [64, 'Normal'], [96, 'Alta'], [128, 'Máxima']].map(([b, label]) => (
+                    <button key={b} type="button" onClick={() => setBitrate(b)} style={{ ...S.btnGhost, flex: 1, padding: '8px 6px', fontSize: 12.5, ...(bitrate === b ? { borderColor: 'var(--accent)', color: 'var(--text-hi)', background: 'var(--accent-soft)' } : {}) }}>
+                      {label}<span style={{ display: 'block', fontSize: 11, color: 'var(--text-low)', fontWeight: 500 }}>{b} kbps</span>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </>
+          )}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button type="button" style={S.linkDanger} onClick={onDelete}><TrashIcon size={13} /> Excluir canal</button>
             <div style={{ flex: 1 }} />
             <button type="button" style={S.btnGhost} onClick={onToggle}>Cancelar</button>
-            <button type="button" style={S.btnPrimary} disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), topic, category_id: cat || null })}>Salvar</button>
+            <button type="button" style={S.btnPrimary} disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), topic, category_id: cat || null, ...(channel.type === 'voice' ? { user_limit: limit, bitrate } : {}) })}>Salvar</button>
           </div>
         </div>
       )}

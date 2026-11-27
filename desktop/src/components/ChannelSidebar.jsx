@@ -179,8 +179,13 @@ export default function ChannelSidebar({
             {unread > 0 && !isActive && (
               <span style={styles.channelUnreadBadge}>{unread > 99 ? '99+' : unread}</span>
             )}
-            {isVoice && peopleHere.length > 0 && (
-              <span style={styles.voiceCount(isActive)}><UsersIcon size={12} /> {peopleHere.length}</span>
+            {isVoice && (peopleHere.length > 0 || c.user_limit > 0) && (
+              <span
+                style={{ ...styles.voiceCount(isActive), ...(c.user_limit > 0 && peopleHere.length >= c.user_limit ? { color: 'var(--danger)' } : {}) }}
+                title={c.user_limit ? `${peopleHere.length} de ${c.user_limit} pessoas` : `${peopleHere.length} na call`}
+              >
+                <UsersIcon size={12} /> {c.user_limit > 0 ? `${peopleHere.length}/${c.user_limit}` : peopleHere.length}
+              </span>
             )}
           </button>
           {isActive && !isVoice ? (

@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const { canViewChannel, getTicket, ticketAudience } = require('./tickets');
+const { hasPermission } = require('./permissions');
 const { verifyToken } = require('./auth');
 const { effectiveStatus } = require('./statusUtils');
 
@@ -229,39 +230,111 @@ function attachRealtime(io) {
     });
     socket.on('server:leave', (serverId) => socket.leave(`server:${serverId}`));
 
-    socket.on('voice:join', (channelId) => {
-      socket.data.voiceChannel = channelId;
-      if (!voiceRooms.has(channelId)) voiceRooms.set(channelId, new Set());
-      const room = voiceRooms.get(channelId);
+    // Entrar numa sala de voz. Sala = canal de voz de servidor OU chamada privada ("dm:<conversa>").
+    // Responde com ack: { ok, bitrate, userLimit } ou { error }.
+    socket.on('voice:join', (payload, ack) => {
+      const reply = typeof ack === 'function' ? ack : () => {};
+      const roomId = String(typeof payload === 'string' ? payload : payload?.channelId || '');
+      const check = canJoinVoice(roomId, socket.user.id);
+      if (check.error) { reply({ error: check.error }); return; }
 
+      if (socket.data.voiceChannel && socket.data.voiceChannel !== roomId) leaveVoice(socket, io);
+      if (!voiceRooms.has(roomId)) voiceRooms.set(roomId, new Set());
+      const room = voiceRooms.get(roomId);
+      if (room.has(socket.id)) { reply({ ok: true, ...check.info }); return; }
+
+      if (check.info.userLimit > 0 && room.size >= check.info.userLimit && !check.bypassLimit) {
+        reply({ error: `Canal cheio (${room.size}/${check.info.userLimit})` });
+        return;
+      }
+
+      socket.data.voiceChannel = roomId;
+      socket.data.screenSharing = false;
       // avisa aos que já estão na sala sobre o novo peer
       room.forEach((peerId) => {
         io.to(peerId).emit('voice:peer-joined', { socketId: socket.id, user: socket.user });
       });
-
       // manda pro novo peer a lista de quem já está lá (pra ele iniciar as conexões)
-      socket.emit(
-        'voice:existing-peers',
-        Array.from(room).map((peerId) => ({ socketId: peerId, user: socketUser.get(peerId) }))
-      );
+      socket.emit('voice:existing-peers', Array.from(room).map((peerId) => ({
+        socketId: peerId,
+        user: socketUser.get(peerId),
+        sharing: Boolean(io.sockets.sockets.get(peerId)?.data.screenSharing),
+      })));
 
       room.add(socket.id);
-      socket.join(`voice:${channelId}`);
-      io.to(`voice:${channelId}`).emit('voice:room-update', { channelId, size: room.size });
-      broadcastVoicePresence(io, channelId);
+      socket.join(`voice:${roomId}`);
+      io.to(`voice:${roomId}`).emit('voice:room-update', { channelId: roomId, size: room.size });
+      broadcastVoicePresence(io, roomId);
+      reply({ ok: true, ...check.info });
     });
 
-    socket.on('voice:signal', ({ to, signal }) => {
+    // Checagem antes de abrir o microfone: pode entrar? está cheio?
+    socket.on('voice:join-check', (payload, ack) => {
+      if (typeof ack !== 'function') return;
+      const roomId = String(payload?.channelId || '');
+      const check = canJoinVoice(roomId, socket.user.id);
+      if (check.error) return ack({ error: check.error });
+      const size = voiceRooms.get(roomId)?.size || 0;
+      if (check.info.userLimit > 0 && size >= check.info.userLimit && !check.bypassLimit) {
+        return ack({ error: `Canal cheio (${size}/${check.info.userLimit})` });
+      }
+      ack({ ok: true, ...check.info, size });
+    });
+
+    // Sinalização só entre quem está na MESMA sala (antes dava pra mandar pra qualquer socket)
+    socket.on('voice:signal', ({ to, signal } = {}) => {
+      const roomId = socket.data.voiceChannel;
+      if (!roomId || !voiceRooms.get(roomId)?.has(to)) return;
       io.to(to).emit('voice:signal', { from: socket.id, signal, user: socket.user });
     });
 
     // Quem compartilha avisa a sala quando começa/para — sem isso, quem estava assistindo
     // ficava com o vídeo congelado na tela depois que a pessoa parava de compartilhar.
-    socket.on('voice:screen-state', ({ sharing } = {}) => {
+    socket.on('voice:screen-state', ({ sharing, streamId } = {}) => {
       const channelId = socket.data.voiceChannel;
       if (!channelId) return;
       socket.data.screenSharing = Boolean(sharing);
-      socket.to(`voice:${channelId}`).emit('voice:screen-state', { socketId: socket.id, sharing: Boolean(sharing) });
+      socket.to(`voice:${channelId}`).emit('voice:screen-state', {
+        socketId: socket.id, sharing: Boolean(sharing), streamId: typeof streamId === 'string' ? streamId.slice(0, 80) : null,
+      });
+      broadcastVoicePresence(io, channelId);
+    });
+
+    // ─── Chamadas privadas (conversas 1:1 e grupos de DM) ───────────────────
+    // Quem liga entra na sala "dm:<conversa>" e manda tocar pros outros participantes.
+    socket.on('dm:call:ring', ({ conversationId } = {}) => {
+      const conversation = db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(conversationId);
+      if (!conversation) return;
+      const members = conversationMemberIds(conversation);
+      if (!members.includes(socket.user.id)) return;
+      if (socket.data.voiceChannel !== `dm:${conversationId}`) return; // só toca quem já está na chamada
+      const caller = db.prepare('SELECT id, username, tag, display_name, avatar_url, avatar_color FROM users WHERE id = ?').get(socket.user.id);
+      members.filter((uid) => uid !== socket.user.id).forEach((uid) => {
+        userSockets.get(uid)?.forEach((sid) => io.to(sid).emit('dm:call:incoming', {
+          conversationId, caller, isGroup: members.length > 2, memberCount: members.length,
+        }));
+      });
+    });
+
+    // Recusar: avisa quem ligou e para de tocar nas outras abas da mesma pessoa
+    socket.on('dm:call:decline', ({ conversationId } = {}) => {
+      const conversation = db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(conversationId);
+      if (!conversation) return;
+      const members = conversationMemberIds(conversation);
+      if (!members.includes(socket.user.id)) return;
+      userSockets.get(socket.user.id)?.forEach((sid) => io.to(sid).emit('dm:call:dismissed', { conversationId }));
+      const room = voiceRooms.get(`dm:${conversationId}`);
+      room?.forEach((sid) => io.to(sid).emit('dm:call:declined', { conversationId, userId: socket.user.id, username: socket.user.username }));
+    });
+
+    // Estado das chamadas das minhas conversas (pra mostrar "em chamada" ao abrir o app)
+    socket.on('dm:call:sync', () => {
+      for (const [roomId, room] of voiceRooms.entries()) {
+        if (!roomId.startsWith('dm:') || room.size === 0) continue;
+        const conversation = db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(roomId.slice(3));
+        if (!conversation || !conversationMemberIds(conversation).includes(socket.user.id)) continue;
+        socket.emit('dm:call:state', { conversationId: conversation.id, participants: roomParticipants(io, roomId) });
+      }
     });
 
     socket.on('voice:leave', () => leaveVoice(socket, io));
@@ -290,6 +363,32 @@ function attachRealtime(io) {
   };
 }
 
+/** Pode entrar nessa sala de voz? Devolve { info: {bitrate, userLimit}, bypassLimit } ou { error }. */
+function canJoinVoice(roomId, userId) {
+  if (!roomId) return { error: 'Sala inválida' };
+  if (roomId.startsWith('dm:')) {
+    const conversation = db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(roomId.slice(3));
+    if (!conversation || !conversationMemberIds(conversation).includes(userId)) return { error: 'Você não participa dessa conversa' };
+    return { info: { bitrate: 64, userLimit: 0, kind: 'dm' } };
+  }
+  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(roomId);
+  if (!channel || channel.type !== 'voice' || !canViewChannel(channel, userId)) return { error: 'Canal de voz não encontrado' };
+  return {
+    info: { bitrate: channel.bitrate || 64, userLimit: channel.user_limit || 0, kind: 'server' },
+    // Como no Discord: quem gerencia canais passa do limite
+    bypassLimit: hasPermission(channel.server_id, userId, 'gerenciar_canais'),
+  };
+}
+
+function roomParticipants(io, roomId) {
+  const room = voiceRooms.get(roomId);
+  if (!room) return [];
+  return Array.from(room).map((socketId) => {
+    const u = socketUser.get(socketId);
+    return u ? { ...u, socketId, sharing: Boolean(io.sockets.sockets.get(socketId)?.data.screenSharing) } : null;
+  }).filter(Boolean);
+}
+
 function leaveVoice(socket, io) {
   const channelId = socket.data.voiceChannel;
   if (!channelId) return;
@@ -298,6 +397,7 @@ function leaveVoice(socket, io) {
     room.delete(socket.id);
     io.to(`voice:${channelId}`).emit('voice:peer-left', { socketId: socket.id });
     io.to(`voice:${channelId}`).emit('voice:room-update', { channelId, size: room.size });
+    if (room.size === 0) voiceRooms.delete(channelId);
   }
   socket.leave(`voice:${channelId}`);
   socket.data.voiceChannel = null;
@@ -305,16 +405,21 @@ function leaveVoice(socket, io) {
   broadcastVoicePresence(io, channelId);
 }
 
-// Avisa todo mundo que está olhando o servidor (não só quem já está na call) quem está
-// conectado em cada canal de voz — é o que permite mostrar os avatares na lista de canais
-// mesmo pra quem não entrou na chamada, igual ao Discord.
+// Avisa quem está em cada canal de voz. Canal de servidor: todo mundo olhando o servidor
+// (mostra os avatares na lista de canais, igual ao Discord). Chamada privada: os
+// participantes da conversa (pra mostrar "em chamada — entrar").
 function broadcastVoicePresence(io, channelId) {
+  const participants = roomParticipants(io, channelId);
+  if (channelId.startsWith('dm:')) {
+    const conversation = db.prepare('SELECT * FROM dm_conversations WHERE id = ?').get(channelId.slice(3));
+    if (!conversation) return;
+    conversationMemberIds(conversation).forEach((uid) => {
+      userSockets.get(uid)?.forEach((sid) => io.to(sid).emit('dm:call:state', { conversationId: conversation.id, participants }));
+    });
+    return;
+  }
   const channel = db.prepare('SELECT server_id FROM channels WHERE id = ?').get(channelId);
   if (!channel) return;
-  const room = voiceRooms.get(channelId);
-  const participants = room
-    ? Array.from(room).map((socketId) => socketUser.get(socketId)).filter(Boolean)
-    : [];
   io.to(`server:${channel.server_id}`).emit('voice:presence', { channelId, participants });
 }
 

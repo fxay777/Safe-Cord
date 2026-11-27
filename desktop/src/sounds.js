@@ -70,3 +70,24 @@ export function playUndeafenSound() {
     tone({ freq: 660, start: 0.06, duration: 0.12, gain: 0.07, type: 'triangle' });
   } catch (e) {}
 }
+
+// Toque de chamada (quem recebe) — repete até atender/recusar. Devolve a função que para.
+export function startRingtone() {
+  const ring = () => {
+    tone({ freq: 784, start: 0, duration: 0.18, gain: 0.08 });
+    tone({ freq: 988, start: 0.2, duration: 0.18, gain: 0.08 });
+    tone({ freq: 784, start: 0.55, duration: 0.18, gain: 0.08 });
+    tone({ freq: 988, start: 0.75, duration: 0.25, gain: 0.08 });
+  };
+  ring();
+  const t = setInterval(ring, 2400);
+  return () => clearInterval(t);
+}
+
+// "Chamando…" (quem liga) — bipe grave espaçado
+export function startDialTone() {
+  const beep = () => tone({ freq: 440, start: 0, duration: 0.9, gain: 0.04 });
+  beep();
+  const t = setInterval(beep, 3000);
+  return () => clearInterval(t);
+}

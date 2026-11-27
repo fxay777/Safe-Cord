@@ -738,3 +738,19 @@ export function BugIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+export function MaximizeIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4.5 9V5.5a1 1 0 0 1 1-1H9M15 4.5h3.5a1 1 0 0 1 1 1V9M19.5 15v3.5a1 1 0 0 1-1 1H15M9 19.5H5.5a1 1 0 0 1-1-1V15" {...stroke} />
+    </svg>
+  );
+}
+
+export function PhoneOffIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4.2 14.6c4.6-3.5 11-3.5 15.6 0 .6.5.7 1.4.2 2l-1.3 1.6a1.4 1.4 0 0 1-1.8.3l-2.2-1.3a1.4 1.4 0 0 1-.7-1.3l.1-1.2a10.6 10.6 0 0 0-4.2 0l.1 1.2a1.4 1.4 0 0 1-.7 1.3l-2.2 1.3a1.4 1.4 0 0 1-1.8-.3L4 16.6c-.5-.6-.4-1.5.2-2Z" {...stroke} />
+    </svg>
+  );
+}

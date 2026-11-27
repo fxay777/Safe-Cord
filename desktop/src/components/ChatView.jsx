@@ -6,11 +6,12 @@ import { SearchIcon, SmileyIcon, EditIcon, LeaveIcon, UserPlusIcon, ImageIcon, S
 import logo from '../assets/logo.png';
 import { EmptyChannelArt, EmptyMessagesArt } from './EmptyStateArt';
 import { TicketPanelCard, TicketEventRow, TicketBar, TicketClosedComposer } from './tickets/TicketChat';
-import { TicketIcon } from './Icons';
+import { TicketIcon, PhoneIcon } from './Icons';
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB: cobre imagem e vídeo curto
 
 export default function ChatView({
+  callTools = null, // conversa privada: { participants, inThisCall, onCall }
   ticketTools = null, // { api, serverId, me, members, panelsVersion, onOpenChannel, onGoToChannelId, onNotice }
   onOpenProfile,
   channel,
@@ -217,6 +218,18 @@ export default function ChatView({
         </div>
 
         <div style={styles.headerActions}>
+          {isDM && callTools && !callTools.inThisCall && (
+            <button
+              type="button"
+              style={{ ...styles.callBtn, ...(callTools.participants.length ? styles.callBtnLive : {}) }}
+              onClick={callTools.onCall}
+              title={callTools.participants.length ? 'Entrar na chamada' : 'Ligar'}
+              data-call-button
+            >
+              <PhoneIcon size={15} /> {callTools.participants.length ? `Entrar (${callTools.participants.length})` : 'Ligar'}
+            </button>
+          )}
+          {isDM && callTools?.inThisCall && <span style={styles.inCallTag}><span style={styles.liveDot} /> Na chamada</span>}
           {channel.isGroup && onRenameGroup && (
             <button type="button" className="sc-icon-btn" style={styles.headerButton} title="Renomear grupo" onClick={renameGroup}>
               <EditIcon size={15} />
@@ -752,6 +765,13 @@ const styles = {
   channelWelcomeTitle: { fontSize: 18, fontWeight: 750, color: 'var(--text-hi)', lineHeight: 1.25, letterSpacing: -0.3 },
   channelWelcomeSub: { fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.55, marginTop: 8, maxWidth: 320 },
 
+  callBtn: {
+    display: 'inline-flex', alignItems: 'center', gap: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)',
+    color: 'var(--text-hi)', fontWeight: 650, fontSize: 13, padding: '7px 13px', borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
+  },
+  callBtnLive: { background: 'var(--success)', borderColor: 'var(--success)', color: '#fff' },
+  inCallTag: { display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 700, color: 'var(--success)', padding: '0 6px' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, background: 'var(--success)', boxShadow: '0 0 0 3px color-mix(in srgb, var(--success) 25%, transparent)' },
   headerActions: {
     display: 'flex',
     gap: 5,
