@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const { canViewChannel, getTicket, ticketAudience } = require('./tickets');
 const { hasPermission } = require('./permissions');
+const SB = require('./soundboard');
 const { verifyToken } = require('./auth');
 const { effectiveStatus } = require('./statusUtils');
 
@@ -298,6 +299,24 @@ function attachRealtime(io) {
         socketId: socket.id, sharing: Boolean(sharing), streamId: typeof streamId === 'string' ? streamId.slice(0, 80) : null,
       });
       broadcastVoicePresence(io, channelId);
+    });
+
+    // ─── Soundboard: alguém na call toca um som; todo mundo na sala ouve ───────
+    socket.on('voice:soundboard', ({ soundId } = {}, ack) => {
+      const reply = typeof ack === 'function' ? ack : () => {};
+      const roomId = socket.data.voiceChannel;
+      if (!roomId) return reply({ error: 'Entre numa call pra tocar sons' });
+      const now = Date.now();
+      if (now - (socket.data.lastSoundAt || 0) < SB.COOLDOWN_MS) return reply({ error: 'Calma — espere um pouquinho pra tocar outro som' });
+      const result = SB.resolvePlayable(roomId, String(soundId || ''), socket.user.id);
+      if (result.error) return reply({ error: result.error });
+      socket.data.lastSoundAt = now;
+      const s = result.sound;
+      io.to(`voice:${roomId}`).emit('voice:sound', {
+        soundId: s.id, name: s.name, url: s.file, volume: s.volume, color: s.color,
+        by: { socketId: socket.id, id: socket.user.id, username: socket.user.username },
+      });
+      reply({ ok: true });
     });
 
     // ─── Chamadas privadas (conversas 1:1 e grupos de DM) ───────────────────

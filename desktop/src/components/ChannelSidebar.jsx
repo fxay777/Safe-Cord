@@ -76,6 +76,11 @@ export default function ChannelSidebar({
   voiceError = '',
   onToggleVoiceMute,
   onLeaveVoice,
+  screenSharing = false,
+  onToggleScreenShare,
+  remoteScreenShares,
+  onViewScreenShare,
+  soundboard = null,
   onUploadServerImage,
   onRemoveServerImage,
   onOpenServerSettings,
@@ -320,6 +325,11 @@ export default function ChannelSidebar({
           onToggleMute={onToggleVoiceMute}
           onLeave={onLeaveVoice}
           myUsername={user?.display_name || user?.username}
+          screenSharing={screenSharing}
+          onToggleScreenShare={onToggleScreenShare}
+          remoteScreenShares={remoteScreenShares}
+          onViewScreenShare={onViewScreenShare}
+          soundboard={soundboard}
         />
       )}
 

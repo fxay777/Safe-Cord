@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { resolveAssetUrl } from '../api';
 import {
   CloseIcon, CheckIcon, HashIcon, SpeakerIcon, TrashIcon, EditIcon, PlusIcon, ImageIcon, SearchIcon,
-  UsersIcon, ShieldCheckIcon, GearIcon, CrownIcon, LinkIcon, UserPlusIcon, AlertIcon, ChevronDownIcon, TicketIcon,
+  UsersIcon, ShieldCheckIcon, GearIcon, CrownIcon, LinkIcon, UserPlusIcon, AlertIcon, ChevronDownIcon, TicketIcon, MusicIcon,
 } from './Icons';
 import TicketsSettings from './tickets/TicketsSettings';
+import SoundboardSettings from './SoundboardSettings';
 
 // ─── Configurações do servidor (estilo Discord) ─────────────────────────────
 // Visão geral · Canais · Cargos · Membros · Convites · Banimentos
@@ -22,6 +23,7 @@ const PERMISSION_HELP = {
   gerenciar_membros: 'Pode dar e tirar cargos dos membros.',
   banir_membros: 'Pode expulsar e banir membros. Use com cuidado.',
   gerenciar_servidor: 'Pode mudar nome, descrição, cor, ícone, banner e o convite.',
+  gerenciar_soundboard: 'Pode adicionar e remover sons do soundboard, e tocar mesmo quando o soundboard está liberado só pra cargos.',
   gerenciar_tickets: 'Pode criar painéis de ticket e ver, atender, fechar e excluir qualquer ticket.',
 };
 
@@ -45,6 +47,7 @@ export default function ServerSettingsModal({
     { id: 'invites', label: 'Convites', Icon: LinkIcon, show: true },
     { id: 'bans', label: 'Banimentos', Icon: AlertIcon, show: can('banir_membros') },
     { id: 'tickets', label: 'Tickets', Icon: TicketIcon, show: can('gerenciar_tickets') },
+    { id: 'soundboard', label: 'Soundboard', Icon: MusicIcon, show: can('gerenciar_soundboard') },
   ].filter((s) => s.show);
 
   const [section, setSection] = useState(sections.some((s) => s.id === initialSection) ? initialSection : 'overview');
@@ -106,6 +109,7 @@ export default function ServerSettingsModal({
           )}
           {section === 'invites' && <Invites server={server} canRegenerate={can('gerenciar_servidor')} onRegenerateInvite={onRegenerateInvite} />}
           {section === 'bans' && <Bans api={api} server={server} />}
+          {section === 'soundboard' && <SoundboardSettings api={api} server={server} />}
           {section === 'tickets' && <TicketsSettings api={api} server={server} roles={roles} categories={categories} onGoToChannel={onGoToChannel} />}
         </main>
 

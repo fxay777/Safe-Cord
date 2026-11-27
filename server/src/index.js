@@ -21,6 +21,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const userRoutes = require('./routes/userRoutes');
 const verificationRoutes = require('./routes/verificationRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
+const soundRoutes = require('./routes/soundRoutes');
 const { attachRealtime } = require('./realtime');
 const { isSmtpConfigured } = require('./mailer');
 
@@ -44,9 +45,15 @@ app.use(
   })
 );
 
+// Sons padrão do soundboard (gerados por scripts/generate-default-sounds.js)
+app.use('/static/sounds', express.static(path.join(__dirname, '..', 'static', 'sounds'), { maxAge: '30d', immutable: true }));
+
+app.get('/api/sounds/defaults', (req, res) => res.json({ sounds: require('./soundboard').DEFAULT_SOUNDS }));
+
 app.get('/health', (req, res) => res.json({ ok: true, name: 'SafeCord API' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/servers/:serverId/tickets', ticketRoutes);
+app.use('/api/servers/:serverId/sounds', soundRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/friends', friendRoutes);

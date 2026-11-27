@@ -41,7 +41,8 @@ export default function DirectMessagesView({
   remoteScreenShares,
   onViewScreenShare,
   initialPanel = 'friends',
-  focusConversation = null, // { id, nonce } — abre essa conversa (ex.: atendeu uma chamada)
+  focusConversation = null,
+  soundboard = null, // { id, nonce } — abre essa conversa (ex.: atendeu uma chamada)
 }) {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
@@ -259,6 +260,7 @@ export default function DirectMessagesView({
             onToggleScreenShare={onToggleScreenShare}
             remoteScreenShares={remoteScreenShares}
             onViewScreenShare={onViewScreenShare}
+            soundboard={soundboard}
           />
         )}
 

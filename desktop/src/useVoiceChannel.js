@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { API_URL as API_BASE } from './api';
 import { playJoinSound, playLeaveSound, playPeerJoinSound, playPeerLeaveSound, playMuteSound, playUnmuteSound, playDeafenSound, playUndeafenSound } from './sounds';
 
 // STUN por si só falha pra muita gente (NAT simétrico, redes corporativas/4G) — sem um TURN
@@ -58,6 +59,8 @@ export function useVoiceChannel(socket) {
   const screenQualityRef = useRef(SCREEN_QUALITIES['1080p30']);
   const pendingIceRef = useRef(new Map()); // socketId -> [candidates] que chegaram antes da descrição remota
   const [roomId, setRoomId] = useState(null);
+  const [lastSound, setLastSound] = useState(null); // { name, by, color, at } — pra mostrar quem tocou
+  const soundElsRef = useRef(new Set());
   const [roomInfo, setRoomInfo] = useState(null);
 
   const removeRemoteShare = useCallback((peerSocketId) => {
@@ -294,6 +297,20 @@ export function useVoiceChannel(socket) {
       if (!sharing) removeRemoteShare(socketId);
     });
 
+    // Soundboard: cada um toca o som localmente, no dispositivo de saída e volume dele
+    socket.on('voice:sound', (snd) => {
+      setLastSound({ ...snd, at: Date.now() });
+      if (deafenedRef.current) return;
+      let userVol = 0.7;
+      try { const v = Number(localStorage.getItem('safecord_soundboard_volume')); if (!Number.isNaN(v) && localStorage.getItem('safecord_soundboard_volume') !== null) userVol = v / 100; } catch { /* padrão */ }
+      const el = new Audio(snd.url.startsWith('http') ? snd.url : `${API_BASE}${snd.url}`);
+      el.volume = Math.max(0, Math.min(1, (snd.volume / 100) * userVol * (outputVolumeRef.current || 1)));
+      if (outputDeviceIdRef.current && typeof el.setSinkId === 'function') el.setSinkId(outputDeviceIdRef.current).catch(() => {});
+      soundElsRef.current.add(el);
+      el.onended = () => soundElsRef.current.delete(el);
+      el.play().catch(() => soundElsRef.current.delete(el));
+    });
+
     socket.on('voice:peer-left', ({ socketId }) => {
       peersRef.current.get(socketId)?.close();
       peersRef.current.delete(socketId);
@@ -309,7 +326,7 @@ export function useVoiceChannel(socket) {
       socket.emit('voice:join', { channelId }, (res) => { clearTimeout(timer); resolve(res || { ok: true }); });
     });
     if (joined?.error) {
-      ['voice:existing-peers', 'voice:peer-joined', 'voice:signal', 'voice:screen-state', 'voice:peer-left'].forEach((e) => socket.off(e));
+      ['voice:existing-peers', 'voice:peer-joined', 'voice:signal', 'voice:screen-state', 'voice:peer-left', 'voice:sound'].forEach((e) => socket.off(e));
       stream.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
       channelIdRef.current = null;
@@ -333,6 +350,10 @@ export function useVoiceChannel(socket) {
     socket.off('voice:signal');
     socket.off('voice:peer-left');
     socket.off('voice:screen-state');
+    socket.off('voice:sound');
+    soundElsRef.current.forEach((el) => el.pause());
+    soundElsRef.current.clear();
+    setLastSound(null);
 
     localScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
     localScreenStreamRef.current = null;
@@ -460,6 +481,10 @@ export function useVoiceChannel(socket) {
     }));
   }
 
+  const playSound = useCallback((soundId) => new Promise((resolve) => {
+    socket.emit('voice:soundboard', { soundId }, (res) => resolve(res || { ok: true }));
+  }), [socket]);
+
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
@@ -533,5 +558,7 @@ export function useVoiceChannel(socket) {
     channelId: channelIdRef.current,
     roomId,
     roomInfo,
+    playSound,
+    lastSound,
   };
 }

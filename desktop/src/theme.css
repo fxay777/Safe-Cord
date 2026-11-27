@@ -156,3 +156,7 @@ input:focus-visible,
 
 @keyframes scPulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent); } 50% { box-shadow: 0 0 0 10px transparent; } }
 .sc-call-accept { animation: scPulse 1.4s ease-in-out infinite; }
+
+.sc-sound-tile { transition: border-color .12s ease, background .12s ease, transform .08s ease; }
+.sc-sound-tile:hover:not(:disabled) { border-color: var(--c) !important; background: color-mix(in srgb, var(--c) 12%, var(--bg-elevated)) !important; }
+.sc-sound-tile:active:not(:disabled) { transform: scale(0.97); }

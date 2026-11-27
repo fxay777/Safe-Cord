@@ -754,3 +754,11 @@ export function PhoneOffIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+export function VolumeIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4.5 9.5h3l4-3.5v12l-4-3.5h-3a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1ZM15 9a4 4 0 0 1 0 6M17.5 6.5a7.5 7.5 0 0 1 0 11" {...stroke} />
+    </svg>
+  );
+}

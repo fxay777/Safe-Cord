@@ -1,11 +1,23 @@
-import React from 'react';
-import { SpeakerIcon, MicIcon, ScreenShareIcon, StopShareIcon } from './Icons';
+import React, { useEffect, useRef, useState } from 'react';
+import { SpeakerIcon, MicIcon, ScreenShareIcon, StopShareIcon, MusicIcon } from './Icons';
+import Soundboard from './Soundboard';
 
 export default function VoiceBar({
   channelName, participants, muted, error, onToggleMute, onLeave, myUsername,
-  screenSharing, onToggleScreenShare, remoteScreenShares, onViewScreenShare,
+  screenSharing, onToggleScreenShare, remoteScreenShares, onViewScreenShare, soundboard = null,
 }) {
   const sharingPeers = (participants || []).filter((p) => remoteScreenShares?.has(p.socketId));
+  const [boardOpen, setBoardOpen] = useState(false);
+  const boardBtnRef = useRef(null);
+  // "Fulano tocou Buzina" por uns segundos
+  const [flash, setFlash] = useState(null);
+  useEffect(() => {
+    const ls = soundboard?.lastSound;
+    if (!ls) return undefined;
+    setFlash(ls);
+    const t = setTimeout(() => setFlash(null), 3200);
+    return () => clearTimeout(t);
+  }, [soundboard?.lastSound?.at]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={styles.wrap}>
@@ -31,6 +43,16 @@ export default function VoiceBar({
         ))}
       </div>
 
+      {flash && (
+        <div style={styles.soundFlash} data-sound-flash>
+          <span style={{ width: 8, height: 8, borderRadius: 4, background: flash.color, flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><strong>{flash.by?.username}</strong> tocou {flash.name}</span>
+        </div>
+      )}
+      {boardOpen && soundboard && (
+        <Soundboard api={soundboard.api} serverId={soundboard.serverId} anchorRef={boardBtnRef} onPlay={soundboard.play} onClose={() => setBoardOpen(false)} />
+      )}
+
       {sharingPeers.length > 0 && (
         <div style={styles.shareHint}>
           <ScreenShareIcon size={13} style={{ flexShrink: 0 }} /> {sharingPeers.map((p) => p.user?.username).join(', ')} compartilhando —
@@ -51,6 +73,11 @@ export default function VoiceBar({
         >
           {screenSharing ? <StopShareIcon size={15} /> : <ScreenShareIcon size={15} />}
         </button>
+        {soundboard && (
+          <button ref={boardBtnRef} style={styles.btn(false)} onClick={() => setBoardOpen((v) => !v)} title="Soundboard" data-soundboard-btn>
+            <MusicIcon size={15} />
+          </button>
+        )}
         <button style={styles.leaveBtn} onClick={onLeave}>
           Sair
         </button>
@@ -75,6 +102,7 @@ function Chip({ name, muted, you, sharing, onClickShare }) {
 }
 
 const styles = {
+  soundFlash: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--text-mid)', background: 'var(--bg-elevated)', borderRadius: 10, padding: '6px 9px', margin: '0 0 8px', animation: 'scFadeIn 120ms ease-out' },
   wrap: {
     background: 'var(--bg-elevated)',
     margin: '0 8px 8px',

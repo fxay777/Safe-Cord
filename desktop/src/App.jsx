@@ -122,6 +122,12 @@ export default function App() {
     return true;
   }
 
+  // Soundboard da call atual: servidor do canal (ou só os sons padrão numa chamada privada)
+  const soundboardServerId = voiceChannelId && !voiceChannelId.startsWith('dm:')
+    ? servers.find((sv) => (sv.channels || []).some((c) => c.id === voiceChannelId))?.id || null
+    : null;
+  const soundboardTools = voice.connected ? { api, serverId: soundboardServerId, play: voice.playSound, lastSound: voice.lastSound } : null;
+
   function leaveVoiceRoom() {
     voice.leave();
     setVoiceChannelId(null);
@@ -780,6 +786,7 @@ export default function App() {
           onViewScreenShare={setViewingScreenShare}
           onOpenShop={() => setShopOpen(true)}
           dmCalls={dmCalls}
+          soundboard={soundboardTools}
           focusConversation={focusConversation}
           currentVoiceRoom={voiceChannelId}
           onStartCall={startDmCall}
@@ -833,6 +840,7 @@ export default function App() {
               onToggleScreenShare={handleToggleScreenShare}
               remoteScreenShares={voice.remoteScreenShares}
               onViewScreenShare={setViewingScreenShare}
+              soundboard={soundboardTools}
               onOpenShop={() => setShopOpen(true)}
               onUploadServerImage={handleUploadServerImage}
               onRemoveServerImage={handleRemoveServerImage}

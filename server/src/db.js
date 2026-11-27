@@ -387,6 +387,28 @@ ensureConversationColumns();
   if (!ch.has('bitrate')) db.exec('ALTER TABLE channels ADD COLUMN bitrate INTEGER NOT NULL DEFAULT 64');     // kbps do áudio
 }
 
+// ─── Soundboard (sons tocados na call, como no Discord) ─────────────────────
+db.exec(`
+CREATE TABLE IF NOT EXISTS server_sounds (
+  id TEXT PRIMARY KEY,
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '#1E7BFF',
+  file TEXT NOT NULL,              -- /uploads/sounds/<arquivo>
+  duration_ms INTEGER NOT NULL,
+  volume INTEGER NOT NULL DEFAULT 80, -- 0-100
+  uses INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_server_sounds ON server_sounds(server_id);
+`);
+{
+  const sv = new Set(db.prepare('PRAGMA table_info(servers)').all().map((c) => c.name));
+  if (!sv.has('soundboard_everyone')) db.exec('ALTER TABLE servers ADD COLUMN soundboard_everyone INTEGER NOT NULL DEFAULT 1');
+  if (!sv.has('soundboard_defaults')) db.exec('ALTER TABLE servers ADD COLUMN soundboard_defaults INTEGER NOT NULL DEFAULT 1');
+}
+
 // ─── Mercado Pago dos vendedores (pagamento direto / split) ─────────────────
 // O vendedor conecta a conta dele (OAuth). Cada venda é cobrada no nome dele e o
 // Mercado Pago separa a taxa do SafeCord (marketplace_fee) automaticamente.
