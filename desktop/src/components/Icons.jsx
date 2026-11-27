@@ -808,3 +808,13 @@ export function FlagIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+export function ChevronLeftIcon({ size = 16, ...props }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}><path d="m14.5 6-6 6 6 6" {...stroke} /></svg>;
+}
+export function ChevronRightIcon({ size = 16, ...props }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}><path d="m9.5 6 6 6-6 6" {...stroke} /></svg>;
+}
+export function PlayIcon({ size = 16, ...props }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" {...props}><path d="M8 5.6v12.8a1 1 0 0 0 1.5.86l10.2-6.4a1 1 0 0 0 0-1.72L9.5 4.74A1 1 0 0 0 8 5.6Z" fill="currentColor" /></svg>;
+}

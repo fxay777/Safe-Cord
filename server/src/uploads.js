@@ -112,22 +112,48 @@ const uploadAttachment = multer({
   },
 });
 
-async function saveMessageAttachment(buffer, mimetype, userId, originalName) {
+// Confere o tipo REAL do vídeo pelos primeiros bytes (o "type" que o navegador manda é só uma dica)
+function sniffVideo(buffer) {
+  if (buffer.length < 16) return null;
+  if (buffer.readUInt32BE(0) === 0x1a45dfa3) return 'video/webm';
+  if (buffer.toString('latin1', 4, 8) === 'ftyp') {
+    const brand = buffer.toString('latin1', 8, 12);
+    return brand === 'qt  ' ? 'video/quicktime' : 'video/mp4';
+  }
+  return null;
+}
+
+const num = (v, max) => { const n = Number(v); return Number.isFinite(n) && n > 0 && n <= max ? Math.round(n) : null; };
+
+/**
+ * Salva um anexo de mensagem. Imagem: otimiza pra WEBP (mantendo a ANIMAÇÃO de GIF/WEBP animado —
+ * antes virava uma imagem parada). Vídeo: confere que é vídeo de verdade e guarda como veio.
+ * meta (opcional, do app): largura/altura/duração do vídeo, pra montar o player sem "pular".
+ */
+async function saveMessageAttachment(buffer, mimetype, userId, originalName, meta = {}) {
   if (mimetype.startsWith('video/')) {
-    const ext = VIDEO_EXT[mimetype] || 'mp4';
+    const real = sniffVideo(buffer);
+    if (!real) throw Object.assign(new Error('Esse arquivo não é um vídeo válido (MP4, WEBM ou MOV)'), { status: 400 });
+    const ext = VIDEO_EXT[real] || 'mp4';
     const filename = `${userId}-${uuidv4()}.${ext}`;
     fs.writeFileSync(path.join(ATTACHMENT_DIR, filename), buffer);
     return {
       url: `/uploads/attachments/${filename}`,
       name: originalName || `video.${ext}`,
       size: buffer.length,
-      type: mimetype,
-      width: null,
-      height: null,
+      type: real,
+      width: num(meta.width, 8192),
+      height: num(meta.height, 8192),
+      duration: num(meta.duration, 60 * 60 * 6),
     };
   }
 
-  const resized = sharp(buffer).rotate().resize({
+  let info;
+  try { info = await sharp(buffer, { animated: true }).metadata(); } catch {
+    throw Object.assign(new Error('Não consegui ler essa imagem'), { status: 400 });
+  }
+  const animated = (info.pages || 1) > 1;
+  const pipeline = sharp(buffer, { animated, limitInputPixels: 80_000_000 }).rotate().resize({
     width: MAX_ATTACHMENT_DIMENSION,
     height: MAX_ATTACHMENT_DIMENSION,
     fit: 'inside',           // preserva proporção, só reduz se passar do limite
@@ -135,17 +161,18 @@ async function saveMessageAttachment(buffer, mimetype, userId, originalName) {
   });
 
   const filename = `${userId}-${uuidv4()}.webp`;
-  const outputBuffer = await resized.webp({ quality: 85 }).toBuffer();
-  const meta = await sharp(outputBuffer).metadata();
+  const outputBuffer = await pipeline.webp(animated ? { quality: 78, effort: 3 } : { quality: 85 }).toBuffer();
+  const out = await sharp(outputBuffer, { animated }).metadata();
   fs.writeFileSync(path.join(ATTACHMENT_DIR, filename), outputBuffer);
 
   return {
     url: `/uploads/attachments/${filename}`,
-    width: meta.width,
-    height: meta.height,
+    width: out.width,
+    height: animated ? (out.pageHeight || out.height) : out.height,
     size: outputBuffer.length,
     name: originalName || 'imagem.webp',
     type: 'image/webp',
+    animated,
   };
 }
 

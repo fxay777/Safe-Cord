@@ -126,10 +126,12 @@ function handleAttachmentUpload(req, res, next) {
 router.post('/message-attachment', handleAttachmentUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
   try {
-    const attachment = await saveMessageAttachment(req.file.buffer, req.file.mimetype, req.user.id, req.file.originalname);
+    const attachment = await saveMessageAttachment(req.file.buffer, req.file.mimetype, req.user.id, req.file.originalname, {
+      width: req.body?.width, height: req.body?.height, duration: req.body?.duration,
+    });
     res.json({ attachment });
   } catch (e) {
-    res.status(500).json({ error: 'Não foi possível processar o arquivo' });
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Não foi possível processar o arquivo' });
   }
 });
 

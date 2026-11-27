@@ -779,7 +779,7 @@ export default function App() {
           voiceError={voice.error}
           onToggleVoiceMute={voice.toggleMute}
           onLeaveVoice={leaveVoiceRoom}
-          onUploadAttachment={(file) => uploadMessageAttachment(api, file)}
+          onUploadAttachment={(file, opts) => uploadMessageAttachment(api, file, opts)}
           screenSharing={voice.screenSharing}
           onToggleScreenShare={handleToggleScreenShare}
           remoteScreenShares={voice.remoteScreenShares}
@@ -861,7 +861,7 @@ export default function App() {
               messages={messages}
               onSend={sendMessage}
               onTyping={() => activeChannel && socket.emit('typing', { channelId: activeChannel.id })}
-              onUploadAttachment={(file) => uploadMessageAttachment(api, file)}
+              onUploadAttachment={(file, opts) => uploadMessageAttachment(api, file, opts)}
               typingUsers={typingUsers}
               serverName={activeServer?.name}
               inviteCode={activeServer?.invite_code}

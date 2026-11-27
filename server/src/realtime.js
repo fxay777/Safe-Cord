@@ -24,7 +24,10 @@ function sanitizeAttachments(list) {
       size: typeof a.size === 'number' ? a.size : null,
       width: typeof a.width === 'number' ? a.width : null,
       height: typeof a.height === 'number' ? a.height : null,
-      type: typeof a.type === 'string' ? a.type : 'image/webp',
+      type: typeof a.type === 'string' && /^(image|video)\/[a-z0-9.+-]+$/.test(a.type) ? a.type : 'image/webp',
+      duration: typeof a.duration === 'number' ? a.duration : null,
+      animated: Boolean(a.animated),
+      sticker: a.sticker && typeof a.sticker === 'object' ? { id: String(a.sticker.id || '').slice(0, 64), pack: String(a.sticker.pack || '').slice(0, 64) } : undefined,
     }));
 }
 

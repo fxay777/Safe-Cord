@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { resolveAssetUrl } from '../api';
+import { resolveAssetUrl, readVideoMeta } from '../api';
 import EmojiPicker from './emoji/EmojiPicker';
+import MediaGrid from './media/MediaGrid';
 import { loadEmojis, searchEmojis, withTone, getTone, pushRecent, isJumbo } from './emoji/emojiData';
 import BadgeRow from './BadgeRow';
 import { SearchIcon, SmileyIcon, EditIcon, LeaveIcon, UserPlusIcon, ImageIcon, SendIcon, PlusIcon, CheckIcon, CloseIcon } from './Icons';
@@ -59,6 +60,10 @@ export default function ChatView({
   // Autocompletar ":nome" enquanto digita (como no Discord): sugestões acima da caixa
   const [emojiSuggest, setEmojiSuggest] = useState(null); // { start, query, items, index }
   const caretRef = useRef(null); // posição do cursor guardada ao abrir o seletor de emoji
+  const attachmentsCountRef = useRef(0);
+  const uploadsRef = useRef(new Map()); // tempId -> AbortController do envio
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
   const emojiDataRef = useRef(null);
   useEffect(() => { loadEmojis().then((d) => { emojiDataRef.current = d; }).catch(() => {}); }, []);
 
@@ -114,15 +119,18 @@ export default function ChatView({
     e.preventDefault();
 
     const value = text.trim();
-    const ready = attachments.filter((a) => !a.uploading && a.url);
+    if (attachments.some((a) => a.uploading)) { setUploadError('Espere terminar de enviar os arquivos.'); return; }
+    const ready = attachments.filter((a) => a.url);
 
     if (!value && ready.length === 0) return;
 
     onSend(value, ready.map((a) => ({
       url: a.url, name: a.name, size: a.size, width: a.width, height: a.height, type: a.type,
+      duration: a.duration, animated: a.animated,
     })));
     setText('');
     setAttachments([]);
+    attachmentsCountRef.current = 0;
 
     setTimeout(() => {
       textareaRef.current?.focus();
@@ -145,34 +153,61 @@ export default function ChatView({
     if (!keepOpen) setEmojiOpen(false);
   }
 
-  async function handleFilesSelected(e) {
-    const files = Array.from(e.target.files || []);
-    e.target.value = ''; // deixa escolher o mesmo arquivo de novo depois
+  // Anexar fotos/vídeos: botão, arrastar pra dentro do chat ou colar (Ctrl+V)
+  async function addFiles(fileList) {
+    const files = Array.from(fileList || []);
     setUploadError('');
-
     for (const file of files) {
       const isImage = file.type.startsWith('image/');
       const isVideo = file.type.startsWith('video/');
-      if (!isImage && !isVideo) { setUploadError('Só imagens e vídeos por enquanto.'); continue; }
-      if (file.size > MAX_ATTACHMENT_BYTES) { setUploadError('Arquivo grande demais (máx. 25MB).'); continue; }
+      if (!isImage && !isVideo) { setUploadError(`"${file.name}" não é foto nem vídeo.`); continue; }
+      if (file.size > MAX_ATTACHMENT_BYTES) { setUploadError(`"${file.name}" é grande demais (máx. 25 MB).`); continue; }
       if (!onUploadAttachment) { setUploadError('Upload indisponível nesta tela.'); continue; }
+      if (attachmentsCountRef.current >= 10) { setUploadError('No máximo 10 arquivos por mensagem.'); break; }
+      attachmentsCountRef.current += 1;
 
       const tempId = `${Date.now()}-${Math.random()}`;
       const previewUrl = URL.createObjectURL(file);
-      setAttachments((prev) => [...prev, { tempId, name: file.name, previewUrl, type: file.type, uploading: true }]);
+      const controller = new AbortController();
+      uploadsRef.current.set(tempId, controller);
+      setAttachments((prev) => [...prev, { tempId, name: file.name, previewUrl, type: file.type, uploading: true, progress: 0 }]);
 
       try {
-        const uploaded = await onUploadAttachment(file);
-        setAttachments((prev) => prev.map((a) => (a.tempId === tempId ? { ...a, ...uploaded, uploading: false } : a)));
+        const meta = isVideo ? await readVideoMeta(file) : {};
+        const uploaded = await onUploadAttachment(file, {
+          meta,
+          signal: controller.signal,
+          onProgress: (p) => setAttachments((prev) => prev.map((a) => (a.tempId === tempId ? { ...a, progress: p } : a))),
+        });
+        setAttachments((prev) => prev.map((a) => (a.tempId === tempId ? { ...a, ...uploaded, uploading: false, progress: 100 } : a)));
       } catch (err) {
-        setUploadError(err?.response?.data?.error || 'Falha ao enviar o arquivo.');
+        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') setUploadError(err?.response?.data?.error || `Falha ao enviar "${file.name}".`);
         setAttachments((prev) => prev.filter((a) => a.tempId !== tempId));
+        attachmentsCountRef.current -= 1;
+      } finally {
+        uploadsRef.current.delete(tempId);
       }
     }
   }
 
+  async function handleFilesSelected(e) {
+    const files = e.target.files;
+    await addFiles(files);
+    e.target.value = ''; // deixa escolher o mesmo arquivo de novo depois
+  }
+
+  function handlePaste(e) {
+    const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
+    if (files.length) { e.preventDefault(); addFiles(files); }
+  }
+
   function removeAttachment(key) {
-    setAttachments((prev) => prev.filter((a) => a.tempId !== key && a.url !== key));
+    uploadsRef.current.get(key)?.abort(); // cancela se ainda estiver subindo
+    setAttachments((prev) => {
+      const next = prev.filter((a) => a.tempId !== key && a.url !== key);
+      attachmentsCountRef.current = next.length;
+      return next;
+    });
   }
 
   function renameGroup() {
@@ -210,7 +245,22 @@ export default function ChatView({
   }
 
   return (
-    <div style={styles.wrap}>
+    <div
+      style={{ ...styles.wrap, position: 'relative' }}
+      onDragEnter={(e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); dragDepth.current += 1; setDragOver(true); } }}
+      onDragOver={(e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault(); }}
+      onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragOver(false); }}
+      onDrop={(e) => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); dragDepth.current = 0; setDragOver(false); if (channel.ticket?.status !== 'closed') addFiles(e.dataTransfer.files); }}
+    >
+      {dragOver && (
+        <div style={styles.dropZone} data-drop-zone>
+          <div style={styles.dropInner}>
+            <ImageIcon size={34} />
+            <div style={{ fontSize: 17, fontWeight: 750, marginTop: 10 }}>Solte pra enviar</div>
+            <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>Fotos e vídeos até 25 MB · {isDM ? channel.name : `#${channel.name}`}</div>
+          </div>
+        </div>
+      )}
 
       {/* HEADER */}
       <header style={styles.header}>
@@ -412,29 +462,7 @@ export default function ChatView({
                       ? <TicketPanelCard tools={ticketTools} panelId={m.meta?.panelId} />
                       : <div style={styles.content}>Painel de tickets</div>)}
 
-                    {m.attachments?.length > 0 && (
-                      <div style={styles.attachmentGrid}>
-                        {m.attachments.map((att, idx) => (
-                          att.type?.startsWith('video/') ? (
-                            <video
-                              key={idx}
-                              src={resolveAssetUrl(att.url)}
-                              controls
-                              style={styles.attachmentVideo}
-                            />
-                          ) : (
-                            <a key={idx} href={resolveAssetUrl(att.url)} target="_blank" rel="noreferrer">
-                              <img
-                                src={resolveAssetUrl(att.url)}
-                                alt={att.name || 'imagem'}
-                                style={styles.attachmentImage}
-                                loading="lazy"
-                              />
-                            </a>
-                          )
-                        ))}
-                      </div>
-                    )}
+                    {m.attachments?.length > 0 && <MediaGrid items={m.attachments} author={authorName} />}
                   </div>
                 </div>
                 )}
@@ -474,7 +502,12 @@ export default function ChatView({
               ) : (
                 <img src={a.previewUrl || resolveAssetUrl(a.url)} alt={a.name} style={styles.attachmentThumb} />
               )}
-              {a.uploading && <div style={styles.attachmentUploading}>Enviando…</div>}
+              {a.uploading && (
+                <div style={styles.attachmentUploading}>
+                  <span style={styles.progressRing(a.progress || 0)}><span style={styles.progressHole}>{a.progress || 0}%</span></span>
+                </div>
+              )}
+              {!a.uploading && a.type?.startsWith('video/') && <span style={styles.trayBadge}>vídeo</span>}
               <button
                 type="button"
                 style={styles.attachmentRemove}
@@ -528,6 +561,7 @@ export default function ChatView({
             value={text}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={isDM ? `Escreva para ${channel.name}` : `Escreva em #${channel.name}`}
             rows={1}
             style={styles.textarea}
@@ -1089,7 +1123,7 @@ const styles = {
     borderRadius: 10, padding: '5px 9px', width: '100%',
   },
   attachmentCard: {
-    position: 'relative', width: 64, height: 64, borderRadius: 12,
+    position: 'relative', width: 76, height: 76, borderRadius: 12,
     overflow: 'hidden', border: '1px solid var(--border)',
   },
   attachmentThumb: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
@@ -1097,6 +1131,11 @@ const styles = {
     position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', color: '#fff',
     fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
+  progressRing: (p) => ({ width: 40, height: 40, borderRadius: 20, background: `conic-gradient(var(--accent) ${p * 3.6}deg, rgba(255,255,255,0.25) 0deg)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }),
+  progressHole: { width: 31, height: 31, borderRadius: 16, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9.5, fontWeight: 700 },
+  trayBadge: { position: 'absolute', left: 3, bottom: 3, fontSize: 9, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.6)', borderRadius: 5, padding: '1px 5px' },
+  dropZone: { position: 'absolute', inset: 8, zIndex: 50, borderRadius: 22, background: 'color-mix(in srgb, var(--accent) 22%, rgba(0,0,0,0.55))', border: '3px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' },
+  dropInner: { textAlign: 'center', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center' },
   attachmentRemove: {
     position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%',
     border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 12,

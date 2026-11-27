@@ -80,13 +80,31 @@ export async function regenerateInviteCode(api, serverId) {
 // --- Anexos de mensagem (imagem e vídeo) ---
 // Sobe o arquivo; o servidor otimiza e devolve {url, name, size, width, height, type}
 // pra mandar junto com a mensagem pelo socket.
-export async function uploadMessageAttachment(api, file) {
+export async function uploadMessageAttachment(api, file, { onProgress, signal, meta } = {}) {
   const form = new FormData();
+  for (const [k, v] of Object.entries(meta || {})) if (v) form.append(k, String(v));
   form.append('file', file);
   const { data } = await api.post('/uploads/message-attachment', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    signal,
+    onUploadProgress: (e) => { if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100)); },
   });
   return data.attachment;
+}
+
+/** Largura/altura/duração de um vídeo local, antes de subir (pra o player não "pular"). */
+export function readVideoMeta(file) {
+  return new Promise((resolve) => {
+    const v = document.createElement('video');
+    const url = URL.createObjectURL(file);
+    const done = (m) => { URL.revokeObjectURL(url); resolve(m); };
+    v.preload = 'metadata';
+    v.muted = true;
+    v.onloadedmetadata = () => done({ width: v.videoWidth, height: v.videoHeight, duration: v.duration });
+    v.onerror = () => done({});
+    setTimeout(() => done({}), 5000);
+    v.src = url;
+  });
 }
 
 // --- Verificação de email ---
