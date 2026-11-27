@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { resolveAssetUrl } from '../api';
-import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
+import EmojiPicker from './emoji/EmojiPicker';
+import { loadEmojis, searchEmojis, withTone, getTone, pushRecent, isJumbo } from './emoji/emojiData';
 import BadgeRow from './BadgeRow';
 import { SearchIcon, SmileyIcon, EditIcon, LeaveIcon, UserPlusIcon, ImageIcon, SendIcon, PlusIcon, CheckIcon, CloseIcon } from './Icons';
 import logo from '../assets/logo.png';
@@ -55,15 +56,31 @@ export default function ChatView({
     });
   }, [messages]);
 
-  // Fecha o seletor de emoji ao clicar fora
-  useEffect(() => {
-    if (!emojiOpen) return;
-    function onClickOutside(e) {
-      if (emojiWrapRef.current && !emojiWrapRef.current.contains(e.target)) setEmojiOpen(false);
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [emojiOpen]);
+  // Autocompletar ":nome" enquanto digita (como no Discord): sugestões acima da caixa
+  const [emojiSuggest, setEmojiSuggest] = useState(null); // { start, query, items, index }
+  const caretRef = useRef(null); // posição do cursor guardada ao abrir o seletor de emoji
+  const emojiDataRef = useRef(null);
+  useEffect(() => { loadEmojis().then((d) => { emojiDataRef.current = d; }).catch(() => {}); }, []);
+
+  function updateSuggest(value, caret) {
+    const before = value.slice(0, caret);
+    const m = /(^|\s):([\p{L}\d_+-]{2,30})$/u.exec(before);
+    if (!m || !emojiDataRef.current) { setEmojiSuggest(null); return; }
+    const items = searchEmojis(emojiDataRef.current.emojis, m[2].replace(/_/g, ' '), 8);
+    setEmojiSuggest(items.length ? { start: caret - m[2].length - 1, end: caret, query: m[2], items, index: 0 } : null);
+  }
+
+  function applySuggest(item) {
+    const sug = emojiSuggest;
+    if (!sug) return;
+    const char = withTone(item, getTone());
+    pushRecent(item.u);
+    const next = `${text.slice(0, sug.start)}${char} ${text.slice(sug.end)}`;
+    setText(next);
+    setEmojiSuggest(null);
+    const caret = sug.start + char.length + 1;
+    requestAnimationFrame(() => { const el = textareaRef.current; if (el) { el.focus(); el.selectionStart = el.selectionEnd = caret; } });
+  }
 
   // Limpa o rascunho ao trocar de canal/conversa
   useEffect(() => {
@@ -112,17 +129,20 @@ export default function ChatView({
     }, 0);
   }
 
-  function insertEmoji(emojiData) {
-    const emoji = emojiData.emoji;
+  // Insere onde está o cursor (antes ia pro lugar errado depois do 1º emoji: usava um texto velho)
+  function insertEmoji(emoji, { keepOpen } = {}) {
     const el = textareaRef.current;
-    if (!el) { setText((prev) => prev + emoji); return; }
-    const start = el.selectionStart ?? text.length;
-    const end = el.selectionEnd ?? text.length;
-    setText(text.slice(0, start) + emoji + text.slice(end));
-    setTimeout(() => {
-      el.focus();
-      el.selectionStart = el.selectionEnd = start + emoji.length;
-    }, 0);
+    const saved = caretRef.current;
+    setText((prev) => {
+      const start = saved?.start ?? el?.selectionStart ?? prev.length;
+      const end = saved?.end ?? el?.selectionEnd ?? prev.length;
+      const next = prev.slice(0, start) + emoji + prev.slice(end);
+      const caret = start + emoji.length;
+      caretRef.current = { start: caret, end: caret };
+      requestAnimationFrame(() => { if (el) { el.focus(); el.selectionStart = el.selectionEnd = caret; } });
+      return next;
+    });
+    if (!keepOpen) setEmojiOpen(false);
   }
 
   async function handleFilesSelected(e) {
@@ -161,6 +181,16 @@ export default function ChatView({
   }
 
   function handleKeyDown(e) {
+    if (emojiSuggest) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const d = e.key === 'ArrowDown' ? 1 : -1;
+        setEmojiSuggest((sg) => ({ ...sg, index: (sg.index + d + sg.items.length) % sg.items.length }));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); applySuggest(emojiSuggest.items[emojiSuggest.index]); return; }
+      if (e.key === 'Escape') { setEmojiSuggest(null); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit(e);
@@ -170,6 +200,8 @@ export default function ChatView({
   function handleInput(e) {
     setText(e.target.value);
     onTyping?.();
+    caretRef.current = null;
+    updateSuggest(e.target.value, e.target.selectionStart ?? e.target.value.length);
 
     const textarea = e.target;
 
@@ -371,7 +403,7 @@ export default function ChatView({
                     )}
 
                     {m.content && (
-                      <div style={styles.content}>
+                      <div style={isJumbo(m.content) ? styles.jumbo : styles.content} data-jumbo={isJumbo(m.content) || undefined}>
                         {m.content}
                       </div>
                     )}
@@ -477,7 +509,20 @@ export default function ChatView({
           <PlusIcon size={18} />
         </button>
 
-        <form onSubmit={submit} style={styles.inputBox}>
+        <form onSubmit={submit} style={{ ...styles.inputBox, position: 'relative' }}>
+          {emojiSuggest && (
+            <div style={styles.suggest} data-emoji-suggest onMouseDown={(e) => e.preventDefault()}>
+              <div style={styles.suggestTitle}>Emojis com "{emojiSuggest.query}"</div>
+              {emojiSuggest.items.map((it, i) => (
+                <button key={it.u} type="button" onClick={() => applySuggest(it)} onMouseEnter={() => setEmojiSuggest((sg) => ({ ...sg, index: i }))}
+                  style={{ ...styles.suggestRow, ...(i === emojiSuggest.index ? styles.suggestOn : {}) }}>
+                  <span style={{ fontFamily: 'var(--font-emoji)', fontSize: 20, width: 26, textAlign: 'center' }}>{withTone(it, getTone())}</span>
+                  <span style={{ flex: 1, minWidth: 0, textAlign: 'left', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</span>
+                  {it.shortcodes[0] && <span style={styles.suggestCode}>:{it.shortcodes[0]}:</span>}
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={text}
@@ -494,20 +539,16 @@ export default function ChatView({
               className="sc-icon-btn"
               style={styles.inputAction}
               title="Emoji"
+              onMouseDown={() => {
+                const el = textareaRef.current;
+                if (el && document.activeElement === el) caretRef.current = { start: el.selectionStart, end: el.selectionEnd };
+              }}
               onClick={() => setEmojiOpen((v) => !v)}
+              data-emoji-button
             >
               <SmileyIcon size={18} />
             </button>
-            {emojiOpen && (
-              <div style={styles.emojiPickerWrap}>
-                <EmojiPicker
-                  onEmojiClick={insertEmoji}
-                  theme={document.documentElement.getAttribute('data-mode') === 'light' ? EmojiTheme.LIGHT : EmojiTheme.DARK}
-                  height={360}
-                  width={320}
-                />
-              </div>
-            )}
+            {emojiOpen && <EmojiPicker anchorRef={emojiWrapRef} onPick={insertEmoji} onClose={() => setEmojiOpen(false)} />}
           </div>
 
           <button
@@ -1061,6 +1102,12 @@ const styles = {
     border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 12,
     lineHeight: '18px', cursor: 'pointer', padding: 0,
   },
+  jumbo: { fontFamily: 'var(--font-emoji)', fontSize: 44, lineHeight: 1.15, padding: '2px 0', letterSpacing: 2 },
+  suggest: { position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 8px)', zIndex: 30, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--shadow-lg)', padding: 6, display: 'flex', flexDirection: 'column' },
+  suggestTitle: { fontSize: 11, fontWeight: 750, color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '4px 8px 6px' },
+  suggestRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', border: 'none', background: 'transparent', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, color: 'var(--text-hi)' },
+  suggestOn: { background: 'var(--accent-soft)' },
+  suggestCode: { fontSize: 11.5, color: 'var(--text-low)', fontFamily: 'ui-monospace, monospace' },
   emojiPickerWrap: {
     position: 'absolute', bottom: 48, right: -40, zIndex: 20,
     boxShadow: '0 12px 40px rgba(0,0,0,0.4)', borderRadius: 16, overflow: 'hidden',

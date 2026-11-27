@@ -44,8 +44,10 @@
   --shadow-lg: 0 28px 70px rgba(0, 0, 0, 0.55);
   --shadow-glow: 0 0 0 transparent;
 
-  --font-display: 'Inter', 'Segoe UI', system-ui, sans-serif;
-  --font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  /* fontes empacotadas no app (@fontsource) — antes vinham do Google e o app offline ficava sem */
+  --font-display: 'Inter', 'Segoe UI', system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', 'EmojiOne Color';
+  --font-body: 'Inter', 'Segoe UI', system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', 'EmojiOne Color';
+  --font-emoji: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', 'EmojiOne Color', sans-serif;
 }
 
 :root[data-mode="light"] {
@@ -160,3 +162,6 @@ input:focus-visible,
 .sc-sound-tile { transition: border-color .12s ease, background .12s ease, transform .08s ease; }
 .sc-sound-tile:hover:not(:disabled) { border-color: var(--c) !important; background: color-mix(in srgb, var(--c) 12%, var(--bg-elevated)) !important; }
 .sc-sound-tile:active:not(:disabled) { transform: scale(0.97); }
+
+.sc-emoji-cell:hover { background: var(--bg-hover) !important; transform: scale(1.12); }
+.sc-emoji-cell { transition: transform .08s ease; }

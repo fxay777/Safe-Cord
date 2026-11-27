@@ -762,3 +762,49 @@ export function VolumeIcon({ size = 16, ...props }) {
     </svg>
   );
 }
+
+export function PawIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M12 12.5c-2.7 0-5 2.6-5 4.8 0 1.5 1.2 2.2 2.6 2.2.9 0 1.6-.4 2.4-.4s1.5.4 2.4.4c1.4 0 2.6-.7 2.6-2.2 0-2.2-2.3-4.8-5-4.8Z" {...stroke} />
+      <circle cx="6" cy="10" r="1.6" {...stroke} /><circle cx="9.5" cy="6.3" r="1.6" {...stroke} /><circle cx="14.5" cy="6.3" r="1.6" {...stroke} /><circle cx="18" cy="10" r="1.6" {...stroke} />
+    </svg>
+  );
+}
+export function CupIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5V9ZM16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2.5M11 3.5v2.5M14 3.5v2.5" {...stroke} />
+    </svg>
+  );
+}
+export function BallIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <circle cx="12" cy="12" r="8.5" {...stroke} />
+      <path d="M12 7.5 15.5 10l-1.3 4h-4.4L8.5 10 12 7.5ZM12 3.5v4M15.5 10l4.3-1.4M14.2 14l2.6 3.6M9.8 14l-2.6 3.6M8.5 10 4.2 8.6" {...stroke} />
+    </svg>
+  );
+}
+export function CarIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4.5 14.5 6.2 9a2 2 0 0 1 1.9-1.4h7.8A2 2 0 0 1 17.8 9l1.7 5.5M4 14.5h16v3H4v-3ZM6 17.5v1.5M18 17.5v1.5" {...stroke} />
+      <circle cx="7.5" cy="16" r=".8" fill="currentColor" /><circle cx="16.5" cy="16" r=".8" fill="currentColor" />
+    </svg>
+  );
+}
+export function BulbIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M9 17.5h6M10 20.5h4M12 3.5a6 6 0 0 0-3.6 10.8c.4.3.6.8.6 1.3v1.9h6v-1.9c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3.5Z" {...stroke} />
+    </svg>
+  );
+}
+export function FlagIcon({ size = 16, ...props }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M5.5 20.5v-16M5.5 5c4-2 7 2 13 0v8.5c-6 2-9-2-13 0" {...stroke} />
+    </svg>
+  );
+}
